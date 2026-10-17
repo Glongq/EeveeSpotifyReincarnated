@@ -60,6 +60,8 @@ enum GlassTabBar {
         forName: .eeveeTabBarOptionsChanged, object: nil, queue: .main
     ) { _ in
         options = UserDefaults.tabBarOptions
+        // Launch skips the hook when no custom tab is saved yet, so the first add has to arm it before the bar syncs.
+        activateGlassCustomTabs()
         if let stock { sync(stock) }
     }
     // Launch layout can settle before the tab row finishes building, and nothing else
@@ -356,6 +358,7 @@ class GlassTabBarViewHook: ClassHook<UIView> {
     func layoutSubviews() {
         orig.layoutSubviews()
         guard #available(iOS 26.0, *) else { return }
+        activateGlassCustomTabs()
         GlassTabBar.meter.measure { GlassTabBar.sync(target) }
     }
 }
@@ -466,6 +469,7 @@ class LinkDispatcherHook: ClassHook<NSObject> {
 }
 
 func activateGlassCustomTabs() {
+    guard !CustomTabs.available else { return }
     let glass = LiquidGlass.launchOptions
     let count = UserDefaults.tabBarOptions.customTabs.count
     guard glass.enabled, glass.tabBar, count > 0 else { return }
