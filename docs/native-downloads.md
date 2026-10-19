@@ -13,7 +13,6 @@ Support for other Spotify binaries must be established separately.
   confirmed by the maintainer on iPhone 15 Pro Max running iOS 27.0.1.
 - **SideStore:** installation, native downloads and offline playback were also
   confirmed by the maintainer on the same test device.
-- **Sideloadly:** not tested with this native-download extension.
 
 The detailed diagnostic snapshots described below were collected during the
 LiveContainer verification. The subsequent SideStore test is user-confirmed,
@@ -85,8 +84,8 @@ These observations describe the tested device/build and selected tracks. They
 are not a guarantee for every account, encoding, operating system or future date.
 The exported diagnostic snapshot still contained 19 unanswered and 16 outstanding
 read requests. Ten recorded local-track errors were outside the tested album.
-Long-term licence renewal, cellular-only downloading and Sideloadly compatibility
-have not been verified separately.
+Long-term licence renewal and cellular-only downloading have not been
+verified separately.
 
 Private device exports, account data and raw playback histories are not included
 in this repository. `NativeDownloads/provenance.json` records source and reference
