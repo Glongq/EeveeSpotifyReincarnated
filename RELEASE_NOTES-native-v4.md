@@ -29,7 +29,7 @@ Other Spotify binary versions, long-term license renewal and cellular-only downl
 - **Updates and announcements:** https://t.me/glongqforks
 - **Source code, build instructions and tests:** this GitHub repository. GitHub generates the source archives attached to this release automatically.
 
-The complete modified Spotify IPA is distributed separately on Telegram and **is not attached to this GitHub source release**. The source build workflow requires a compatible unmodified EeveeSpotify base IPA supplied by the builder.
+The complete modified Spotify IPA is distributed separately on Telegram and **is not attached to this GitHub source release**.
 
 ## Credits
 
