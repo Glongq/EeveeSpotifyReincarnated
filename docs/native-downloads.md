@@ -7,6 +7,18 @@ This fork adds the experimental native-download implementation from
 Spotify 9.1.88 ARM64 binary documented in `NativeDownloads/provenance.json`.
 Support for other Spotify binaries must be established separately.
 
+## Installation verification
+
+- **LiveContainer:** installation, native downloads and offline playback were
+  confirmed by the maintainer on iPhone 15 Pro Max running iOS 27.0.1.
+- **SideStore:** installation, native downloads and offline playback were also
+  confirmed by the maintainer on the same test device.
+- **Sideloadly:** not tested with this native-download extension.
+
+The detailed diagnostic snapshots described below were collected during the
+LiveContainer verification. The subsequent SideStore test is user-confirmed,
+rather than a separately published native diagnostic capture.
+
 ## Request lifecycle
 
 1. iOS loads `SpotifyAudioProbe.dylib` through the added Mach-O dependency.
@@ -73,8 +85,8 @@ These observations describe the tested device/build and selected tracks. They
 are not a guarantee for every account, encoding, operating system or future date.
 The exported diagnostic snapshot still contained 19 unanswered and 16 outstanding
 read requests. Ten recorded local-track errors were outside the tested album.
-Long-term licence renewal, cellular-only downloading and other installation
-methods have not been verified separately.
+Long-term licence renewal, cellular-only downloading and Sideloadly compatibility
+have not been verified separately.
 
 Private device exports, account data and raw playback histories are not included
 in this repository. `NativeDownloads/provenance.json` records source and reference
