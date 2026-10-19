@@ -26,6 +26,8 @@ the native patchers verify the Mach-O UUID and instruction bytes.
 
 ## Installation and distribution (sideloading)
 
+Project announcements: **[@glongqforks](https://t.me/glongqforks)**. Source code and build documentation remain in this GitHub repository.
+
 This repository hosts the extension's sources and reproducible build scripts,
 not a public modified Spotify IPA release. The maintainer has verified installation,
 native downloads and offline playback through **both LiveContainer and SideStore**.
