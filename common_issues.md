@@ -1,3 +1,9 @@
+> **Native Downloads fork:** This FAQ includes upstream guidance. For the v4
+> download extension, the tested target is EeveeSpotify 7.0.0 / Spotify 9.1.88
+> with the guarded binary in LiveContainer. See [the build and compatibility
+> guide](NativeDownloads/README.md). The upstream support version below is historical
+> context and does not extend this fork's native-download compatibility.
+
 On this page, you'll find a detailed FAQ covering various topics related to EeveeSpotify, answers to common questions, and more.
 
 # Versions and Support
@@ -28,7 +34,7 @@ If you're using a paid certificate, to navigate to a song from the lock screen, 
 
 EeveeSpotify does not accept free feature requests. If you need something, feel free to implement it yourself, or submit a pull request if you think others may find it useful. If you're willing to pay for a feature, open an issue to discuss further opportunities.
 
-Note that many Premium features are server-sided and will never work without a Premium subscription (e.g., very high quality audio, AI DJ, offline downloads on mobile data).
+Other Premium features such as very high audio quality and AI DJ remain outside this fork's download implementation. Cellular-only downloading has not been independently validated; do not infer support from successful Wi-Fi tests.
 
 # Troubleshooting & Issues
 
@@ -71,13 +77,29 @@ This issue is solely related to your account region. Do not enable "Overwrite Co
 
 ## Downloading
 
-Downloading is not, and will never be, implemented in EeveeSpotify. While it is technically possible to intercept the audio stream or use third-party APIs, downloading simply will not be included in EeveeSpotify.
+This fork includes **experimental native downloads**, based on the verified v4
+runtime. Use Spotify's regular album/playlist Download button, or open
+**EeveeSpotify → Track downloads** for the current-track action and diagnostics.
 
-However, opening a pull request is always welcome. If you are a developer and manage to implement downloading that works flawlessly and natively (without third-party menus, UI elements, etc.), you will be considered a true legend and mentioned at the top of the README and contributors screen.
+- The checked target is Spotify 9.1.88 with the exact Mach-O UUID documented in
+  [the compatibility guide](NativeDownloads/README.md), using EeveeSpotify 7.0.0
+  in LiveContainer. Other installations are not covered by the device verification.
+- Content is stored by Spotify for offline playback. Separate MP3/WAV export is
+  not part of this release; WAV capture is disabled.
+- A request being accepted or a green icon alone is not an independent playback
+  test. Use the native state check and, when appropriate, verify with networking off.
+- Historical errors can remain after a later successful download. Diagnostic
+  read requests can still time out; this is a documented remaining limitation.
+- Automatic per-track playback is not required by the download implementation.
+- Long-term licence renewal and cellular-only downloads have not been verified.
 
-You may see a "Download local playlist" option. This is specifically for downloading playlists that contain only local tracks from your PC within a Wi-Fi network.
+For problems, enable diagnostics, reproduce the issue, and submit the relevant
+redacted observations to **Glongq/EeveeSpotifyReincarnated** using the Native
+Download issue form. This implementation is independent of upstream's download
+policy; do not send its support issues to upstream.
 
-Any issues regarding downloading of any kind will be closed.
+The upstream "Download local playlist" action refers to local files from a PC
+on the same Wi-Fi network. It is a separate feature.
 
 ## Spotify Connect
 

@@ -1,0 +1,44 @@
+name: Native download issue
+description: Report an issue with this fork's experimental native downloads.
+title: '[Native Downloads] '
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for Glongq's native-download fork. Read NativeDownloads/README.md first.
+        Diagnostics are optional; enable them before reproducing the issue. Redact account
+        details, credentials, tokens and personal listening history from any shared report.
+  - type: input
+    id: build
+    attributes:
+      label: Fork release or commit
+      placeholder: spotify-ui-v4 / commit SHA
+    validations:
+      required: true
+  - type: input
+    id: spotify
+    attributes:
+      label: Spotify version and Eevee base version
+      placeholder: Spotify 9.1.88 / EeveeSpotify 7.0.0
+    validations:
+      required: true
+  - type: input
+    id: installation
+    attributes:
+      label: Device, iOS version and installation method
+      placeholder: iPhone / iOS / LiveContainer version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected result and actual result
+      description: Include whether you used the album/playlist button or the current-track action, and whether playback was local or through Connect.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Diagnostic observations
+      description: Relevant redacted errors or state transitions; distinguish current completion from historical errors. Mention whether offline playback was actually checked.

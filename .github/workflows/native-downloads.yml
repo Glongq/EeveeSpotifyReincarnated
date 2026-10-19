@@ -1,0 +1,58 @@
+name: Native Downloads — Validate / Build IPA
+
+on:
+  push:
+    paths:
+      - 'NativeDownloads/**'
+      - '.github/workflows/native-downloads.yml'
+  pull_request:
+    paths:
+      - 'NativeDownloads/**'
+      - '.github/workflows/native-downloads.yml'
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'Optional HTTPS URL to your unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 IPA; leave empty for validation only'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate source provenance and guarded patchers
+        run: python3 NativeDownloads/tools/test_patchers.py
+
+  build-ipa:
+    if: github.event_name == 'workflow_dispatch' && inputs.ipa_url != ''
+    needs: validate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download user-supplied base IPA
+        env:
+          SOURCE_IPA_URL: ${{ inputs.ipa_url }}
+        run: |
+          case "$SOURCE_IPA_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
+          curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$SOURCE_IPA_URL" --output "$RUNNER_TEMP/source.ipa"
+      - name: Build guarded native-download overlay
+        run: python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spotify-ui-v4-native-downloads
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            NativeDownloads/outputs/spotify-ui-v4.ipa
+            NativeDownloads/outputs/build-manifest.json

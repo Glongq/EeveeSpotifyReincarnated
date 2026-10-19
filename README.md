@@ -1,8 +1,53 @@
+# EeveeSpotifyReincarnated — UNOFFICIAL FORK
+
+> [!IMPORTANT]
+> **You are viewing Glongq's independently maintained fork.**
+> The original upstream project is
+> **[SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)**.
+> This fork adds experimental native downloads. Its changes and builds are maintained
+> separately and are not presented as official upstream releases.
+
+**Fork maintainer:** [Glongq](https://github.com/Glongq)  
+**Development and builds:** OpenAI Codex, under Glongq's direction.  
+**Upstream:** [SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)  
+**Licence:** GPLv3 — upstream history, licence and contributor credits are retained.
+
+The native-download implementation, fork integration, documentation and local
+builds were produced with **OpenAI Codex** under Glongq's direction. Glongq supplied
+device testing and feedback. Upstream code retains its original authorship.
+
+## Experimental native downloads — v4
+
+This fork adds native Spotify album/playlist downloading and a **Track downloads**
+section inside EeveeSpotify settings. Verified on the guarded **Spotify 9.1.88**
+binary with **EeveeSpotify 7.0.0 in LiveContainer**. Downloads stay in Spotify's
+offline storage. English/Russian UI is included; WAV recording is disabled.
+
+- [Build, installation and supported configuration](NativeDownloads/README.md)
+- [Architecture, device verification and known limits](docs/native-downloads.md)
+- [Native-download changelog](CHANGELOG-native-downloads.md)
+- [Source provenance and reference hashes](NativeDownloads/provenance.json)
+
+```sh
+python3 NativeDownloads/tools/test_patchers.py
+python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa
+```
+
+Supply your own compatible base IPA. For GitHub builds, use **Actions → Native
+Downloads — Validate / Build IPA**. Other Spotify binaries, installation methods,
+and long-term licence renewal are not claimed to work without separate testing.
+Diagnostic read timeouts remain a known limitation. Download issues for this
+extension belong in **this fork**, not the upstream issue tracker.
+
+---
+
+## Upstream project documentation
+
 ![Banner](Images/banner.png?)
 
 # EeveeSpotifyReincarnated
 
-**Maintainers:** [jaydenjcpy](https://github.com/jaydenjcpy) & [faroukbmiled](https://github.com/faroukbmiled) & [Mod4](https://github.com/M0d-4) <br />
+**Upstream maintainers:** [jaydenjcpy](https://github.com/jaydenjcpy) & [faroukbmiled](https://github.com/faroukbmiled) & [Mod4](https://github.com/M0d-4) <br />
 **Last Update:** `10/5/26` **Spotify Version:** `9.1.88`
 
 This tweak makes Spotify think you have a Premium subscription, granting free listening, just like Spotilife, and provides some additional features like custom lyrics.
@@ -21,7 +66,9 @@ This tweak makes Spotify think you have a Premium subscription, granting free li
 
 <sup>*Musixmatch requires you to input a user token to retrieve lyrics. EeveeSpotifyReincarnated supports requesting an Anonymous Token to retrieve this functionality.</sup>
 
-## How to build an EeveeSpotify IPA using Github actions
+## Upstream IPA build workflows
+
+These upstream workflows build/package the base tweak. Use the dedicated Native Downloads workflow above to include this fork's extension.
 > [!NOTE]
 > If this your first time, complete following steps before starting:
 >
@@ -58,10 +105,9 @@ Today, EeveeSpotifyReincarnated is maintained by [jaydenjcpy](https://github.com
 
 ## Restrictions
 
-Please refrain from opening issues about the following features, as they are server-sided and will **NEVER** work:
+This fork's experimental native downloads have a separate [compatibility and support guide](NativeDownloads/README.md). The following upstream restrictions remain outside that implementation:
 
 - Very High audio quality
-- Native playlist downloading (you can download podcast episodes though)
 - Jam (hosting a Spotify Jam and joining it remotely requires Premium; only joining in-person works)
 - AI DJ/Playlist
 - Spotify Connect (When using Spotify Connect, the device will act as a remote control and stream directly to the connected device. This is a server-sided limitation and is beyond the control of EeveeSpotify, so it will behave as if you have a Free subscription while using this feature.)

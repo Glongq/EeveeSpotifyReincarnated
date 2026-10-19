@@ -6,9 +6,9 @@ body:
     attributes:
       value: |
         **Before you submit:**
-        - Check the [Common Issues / FAQ](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/blob/Master/common_issues.md) — most premium, logout, lyrics, and download questions are answered there.
-        - Issues about server-sided features (Very High audio quality, native playlist downloading, Jam hosting, AI DJ/Playlist, Spotify Connect, homescreen/podcast ads) will be closed without further discussion.
-        - If you can, update to the latest EeveeSpotify and Spotify versions and check whether the bug still happens.
+        - Check the [Common Issues / FAQ](https://github.com/Glongq/EeveeSpotifyReincarnated/blob/Master/common_issues.md) — most premium, logout, lyrics, and download questions are answered there.
+        - Issues about server-sided features (Very High audio quality, Jam hosting, AI DJ/Playlist, Spotify Connect, homescreen/podcast ads) will be closed without further discussion.
+        - For experimental native downloads, use the dedicated Native Download issue form and the exact supported build. For other features, state your tested version.
 
   - type: dropdown
     id: install-type
@@ -18,6 +18,7 @@ body:
         - Jailbroken (deb)
         - TrollStore
         - Sideloaded IPA (SideStore / AltStore / Sideloadly / signing service)
+        - LiveContainer
         - Other
     validations:
       required: true
@@ -53,9 +54,9 @@ body:
     attributes:
       label: Pre-submit checks
       options:
-        - label: I have read the [Common Issues / FAQ](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/blob/Master/common_issues.md)
+        - label: I have read the [Common Issues / FAQ](https://github.com/Glongq/EeveeSpotifyReincarnated/blob/Master/common_issues.md)
         - label: This is not a server-sided feature listed in the FAQ or README
-        - label: I am on the latest EeveeSpotify release (or this also happens on it)
+        - label: I have specified the exact release and checked its documented compatibility
     validations:
       required: true
 
@@ -86,7 +87,7 @@ body:
       options:
         - Premium patching / playback
         - Lyrics
-        - Downloads (podcasts / local playlists only)
+        - Downloads (use the dedicated Native Download form for this extension)
         - Settings UI
         - Ads
         - Login / session
