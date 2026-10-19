@@ -1,38 +1,36 @@
-> **Native Downloads fork:** This FAQ includes upstream guidance. For the v4
-> download extension, the tested target is EeveeSpotify 7.0.0 / Spotify 9.1.88
-> with the guarded binary in LiveContainer. See [the build and compatibility
-> guide](NativeDownloads/README.md). The upstream support version below is historical
-> context and does not extend this fork's native-download compatibility.
+# Common Issues — Glongq's Native Downloads Fork
 
-On this page, you'll find a detailed FAQ covering various topics related to EeveeSpotify, answers to common questions, and more.
+> [!IMPORTANT]
+> This FAQ covers the **unofficial Glongq fork**. For the original project,
+> see the [upstream FAQ](https://github.com/SideloadLabs/EeveSpotifyReincarnated/blob/Master/common_issues.md).
+> Upstream installation and version instructions are not compatibility claims for this fork.
 
-# Versions and Support
+## Versions and installation
 
-EeveeSpotify currently supports Spotify version **9.1.68** (the latest version compatible with iOS 16.1+). 
+**Native Downloads v4** targets **Spotify 9.1.88 / EeveeSpotify 7.0.0**
+with the guarded ARM64 binary documented in [the compatibility guide](NativeDownloads/README.md).
 
-If you are jailbroken, install the latest .deb from the [releases page](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/releases), along with the latest Spotify from the App Store. After installation, open the EeveeSpotify settings (accessible from your Spotify profile settings) and reset data so it will properly patch Premium features.
+| Method | Install | Native downloads | Offline playback |
+| --- | --- | --- | --- |
+| **SideStore** | Verified | Verified | Verified |
+| **LiveContainer** | Verified | Verified | Verified |
+| Sideloadly | Not tested | Not tested | Not tested |
 
-For non-jailbroken devices, use the patched IPA files available in the releases. You can install these using:
-- **TrollStore** (recommended for iOS 14-16.6.1, 17.0)
-- **Sideloadly** (7-day signing)
-- **AltStore** (7-day signing)
-- **Signing services** with paid certificates, such as [**FlareStore**](https://flarestore.app)
+Tests were performed by the maintainer on iPhone 15 Pro Max / iOS 27.0.1.
+Detailed native diagnostics were collected during the LiveContainer tests.
+A matching Spotify version label alone does not guarantee the same binary.
 
-EeveeSpotify only supports iOS and iPadOS and is not planned to be supported on other platforms. You can sideload the iPadOS version on an Apple Silicon Mac, though.
-
-New versions are released when compatible Spotify updates become available. Check the [releases page](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/releases) for the latest builds, or join the [Telegram channel](https://t.me/compiledipas) for IPA downloads and updates.
-
-## CarPlay, Siri and Dynamic Island/Lockscreen
-
-To use CarPlay, you need to either install the tweak on a jailbroken device, use TrollStore, or have a paid certificate with a CarPlay entitlement.
-
-To use Siri, you need to either install the tweak on a jailbroken device, use TrollStore, or have a paid certificate with a Siri entitlement.
-
-If you're using a paid certificate, to navigate to a song from the lock screen, control center, or Dynamic Island, and to use Spatial Audio or Siri, change the app and bundle identifiers to match your provisioning profile.
+This source repository has no public modified Spotify IPA release.
+To make a local build, follow [NativeDownloads/README.md](NativeDownloads/README.md)
+or run the [native-download workflow](.github/workflows/native-downloads.yml)
+with a compatible user-supplied base IPA. The workflow uploads temporary artifacts
+and does not automatically publish a GitHub Release.
 
 # Feature Requests
 
-EeveeSpotify does not accept free feature requests. If you need something, feel free to implement it yourself, or submit a pull request if you think others may find it useful. If you're willing to pay for a feature, open an issue to discuss further opportunities.
+For requests concerning this fork's native-download extension, open an issue
+or a pull request in **Glongq/EeveeSpotifyReincarnated**. For features maintained
+by upstream, consult the original project's contribution policy.
 
 Other Premium features such as very high audio quality and AI DJ remain outside this fork's download implementation. Cellular-only downloading has not been independently validated; do not infer support from successful Wi-Fi tests.
 
@@ -81,9 +79,10 @@ This fork includes **experimental native downloads**, based on the verified v4
 runtime. Use Spotify's regular album/playlist Download button, or open
 **EeveeSpotify → Track downloads** for the current-track action and diagnostics.
 
-- The checked target is Spotify 9.1.88 with the exact Mach-O UUID documented in
-  [the compatibility guide](NativeDownloads/README.md), using EeveeSpotify 7.0.0
-  in LiveContainer. Other installations are not covered by the device verification.
+- The checked target is Spotify 9.1.88 / EeveeSpotify 7.0.0 with the exact
+  Mach-O UUID in [the compatibility guide](NativeDownloads/README.md).
+  The maintainer confirmed native downloads and offline playback with both
+  **SideStore and LiveContainer** on the tested device. Sideloadly is untested.
 - Content is stored by Spotify for offline playback. Separate MP3/WAV export is
   not part of this release; WAV capture is disabled.
 - A request being accepted or a green icon alone is not an independent playback
