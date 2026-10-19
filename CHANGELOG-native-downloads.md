@@ -5,8 +5,7 @@
 - Maintainer confirmed v4 installation, native downloads and offline playback
   through both SideStore and LiveContainer on iPhone 15 Pro Max / iOS 27.0.1.
 - LiveContainer remains the source of the detailed native diagnostic results.
-- Added installation compatibility and build/distribution instructions.
-- Clarified Sideloadly as not tested, without claiming extra installation targets.
+- Added compatibility information for the two verified sideloading methods and build/distribution instructions.
 - Updated the fork FAQ to distinguish Spotify 9.1.88 from older upstream guidance.
 
 ## Source release v4 — 2026-10-19
