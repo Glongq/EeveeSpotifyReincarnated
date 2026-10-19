@@ -33,6 +33,12 @@ The maintainer confirms that downloads and offline playback work through both Si
 - Diagnostics are off by default; some read requests may still time out.
 - Other Spotify binaries, long-term licence renewal and cellular-only downloading are **not verified**.
 
+### Download the ready-made IPA
+
+**[Download Native Downloads v4 IPA — Telegram post](https://t.me/glongqforks/2)**. Open the post and download the attached `.ipa` file. Use SideStore to install it, or import it into LiveContainer. Both methods were tested by the maintainer as described above.
+
+**Do not download `Source code (zip)` or `Source code (tar.gz)` to install the app.** Those are source-code archives, not an installable IPA. To examine or build the code, use the [native-v4 source release](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v4).
+
 ### News and announcements
 
 - **Official channel for this fork:** [@glongqforks](https://t.me/glongqforks) — updates and release announcements.
