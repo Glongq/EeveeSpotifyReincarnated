@@ -14,19 +14,24 @@ Upstream EeveeSpotify contributors retain credit for the base project.
 
 - EeveeSpotify base: 7.0.0.
 - Spotify: **9.1.88**, ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2`.
-- LiveContainer: installation, native downloads and offline playback tested on iPhone 15 Pro Max, iOS 27.0.1.
-- SideStore: installation confirmed by the maintainer; offline-download/playback regression testing via SideStore is not separately documented.
+- LiveContainer: installation, native downloads and offline playback verified by the maintainer on iPhone 15 Pro Max, iOS 27.0.1.
+- SideStore: installation, native downloads and offline playback also verified by the maintainer on the same device.
+- Sideloadly: not tested with this v4 extension.
 - Languages: English and Russian, following the app language.
 - WAV recording: **disabled in release builds**.
 
-Other Spotify binaries, other installation/signing methods, jailbreak packages,
-iPads, SideStore download/playback behavior, long-term licence renewal, and
-cellular-only downloads have not been independently validated for this extension. An identical version label alone does not establish
-compatibility: the native patchers verify the Mach-O UUID and instruction bytes.
+Other Spotify binaries, Sideloadly, iPads, long-term licence renewal, and
+cellular-only downloads have not been independently validated for this
+extension. A matching version label alone does not establish compatibility:
+the native patchers verify the Mach-O UUID and instruction bytes.
 
 ## Installation and distribution
 
-This repository hosts the extension's sources and reproducible build scripts, not a public modified Spotify IPA release. The maintainer has tested installation with LiveContainer and SideStore, with native downloads and offline playback separately confirmed in LiveContainer. No distinct Patched/Non-Patched v4 variants have been verified.
+This repository hosts the extension's sources and reproducible build scripts,
+not a public modified Spotify IPA release. The maintainer has verified installation,
+native downloads and offline playback through **both LiveContainer and SideStore**.
+The detailed native diagnostics in the verification report were collected with
+LiveContainer. No separate Patched/Non-Patched v4 variants have been verified.
 
 ## Build the checked overlay
 
@@ -42,7 +47,7 @@ python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.
 
 Outputs are in `NativeDownloads/outputs/`:
 
-- `spotify-ui-v4.ipa`: import and sign through LiveContainer in the normal way.
+- `spotify-ui-v4.ipa`: output IPA; installation has been verified via SideStore and LiveContainer on the tested device.
 - `SpotifyAudioProbe.dylib`: the companion library.
 - `build-manifest.json`: input/output hashes, source hashes and patch details.
 
