@@ -1,10 +1,11 @@
-name: Publish Native Downloads v4 source release
+name: Sync Native Downloads v4 release notes
 
 on:
   push:
     branches:
       - Master
     paths:
+      - 'RELEASE_NOTES-native-v4.md'
       - '.github/workflows/publish-native-v4.yml'
   workflow_dispatch:
 
@@ -16,25 +17,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish GitHub source release
+  sync-notes:
+    name: Update existing native-v4 release
     if: github.repository == 'Glongq/EeveeSpotifyReincarnated'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Publish prerelease if it does not exist
+      - name: Edit release notes in place
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view native-v4 >/dev/null 2>&1; then
-            echo "Release native-v4 already exists; leaving it unchanged."
-            exit 0
-          fi
-          gh release create native-v4 \
-            --target "$GITHUB_SHA" \
-            --title "EeveeSpotify Native Downloads v4" \
-            --notes-file RELEASE_NOTES-native-v4.md \
-            --prerelease
+          gh release view native-v4 >/dev/null
+          gh release edit native-v4 --notes-file RELEASE_NOTES-native-v4.md
           gh release view native-v4 --json url,tagName,name,isPrerelease
