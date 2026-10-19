@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > This FAQ covers the **unofficial Glongq fork**. For the original project,
-> see the [upstream FAQ](https://github.com/SideloadLabs/EeveSpotifyReincarnated/blob/Master/common_issues.md).
+> see the [upstream FAQ](https://github.com/SideloadLabs/EeveeSpotifyReincarnated/blob/Master/common_issues.md).
 > Upstream installation and version instructions are not compatibility claims for this fork.
 
 ## Versions and installation
