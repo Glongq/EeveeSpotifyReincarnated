@@ -33,6 +33,11 @@ The maintainer confirms that downloads and offline playback work through both Si
 - Diagnostics are off by default; some read requests may still time out.
 - Other Spotify binaries, long-term licence renewal and cellular-only downloading are **not verified**.
 
+### News and announcements
+
+- **Official channel for this fork:** [@glongqforks](https://t.me/glongqforks) — updates and release announcements.
+- **Source code:** [Glongq/EeveeSpotifyReincarnated](https://github.com/Glongq/EeveeSpotifyReincarnated).
+
 ### Source code and building
 
 This repository contains **source code, build scripts and tests**, not a publicly hosted modified Spotify IPA. The [Releases page](https://github.com/Glongq/EeveeSpotifyReincarnated/releases) contains no published IPA release at the time of this documentation update.
