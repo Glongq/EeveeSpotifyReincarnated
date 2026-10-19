@@ -16,16 +16,15 @@ Upstream EeveeSpotify contributors retain credit for the base project.
 - Spotify: **9.1.88**, ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2`.
 - LiveContainer: installation, native downloads and offline playback verified by the maintainer on iPhone 15 Pro Max, iOS 27.0.1.
 - SideStore: installation, native downloads and offline playback also verified by the maintainer on the same device.
-- Sideloadly: not tested with this v4 extension.
 - Languages: English and Russian, following the app language.
 - WAV recording: **disabled in release builds**.
 
-Other Spotify binaries, Sideloadly, iPads, long-term licence renewal, and
+Other Spotify binaries, iPads, long-term licence renewal and
 cellular-only downloads have not been independently validated for this
 extension. A matching version label alone does not establish compatibility:
 the native patchers verify the Mach-O UUID and instruction bytes.
 
-## Installation and distribution
+## Installation and distribution (sideloading)
 
 This repository hosts the extension's sources and reproducible build scripts,
 not a public modified Spotify IPA release. The maintainer has verified installation,
