@@ -5,7 +5,7 @@
 > see the [upstream FAQ](https://github.com/SideloadLabs/EeveeSpotifyReincarnated/blob/Master/common_issues.md).
 > Upstream installation and version instructions are not compatibility claims for this fork.
 
-## Versions and installation
+## Versions and sideloading installation
 
 **Native Downloads v4** targets **Spotify 9.1.88 / EeveeSpotify 7.0.0**
 with the guarded ARM64 binary documented in [the compatibility guide](NativeDownloads/README.md).
@@ -14,7 +14,6 @@ with the guarded ARM64 binary documented in [the compatibility guide](NativeDown
 | --- | --- | --- | --- |
 | **SideStore** | Verified | Verified | Verified |
 | **LiveContainer** | Verified | Verified | Verified |
-| Sideloadly | Not tested | Not tested | Not tested |
 
 Tests were performed by the maintainer on iPhone 15 Pro Max / iOS 27.0.1.
 Detailed native diagnostics were collected during the LiveContainer tests.
@@ -82,7 +81,7 @@ runtime. Use Spotify's regular album/playlist Download button, or open
 - The checked target is Spotify 9.1.88 / EeveeSpotify 7.0.0 with the exact
   Mach-O UUID in [the compatibility guide](NativeDownloads/README.md).
   The maintainer confirmed native downloads and offline playback with both
-  **SideStore and LiveContainer** on the tested device. Sideloadly is untested.
+  **SideStore and LiveContainer** on the tested device.
 - Content is stored by Spotify for offline playback. Separate MP3/WAV export is
   not part of this release; WAV capture is disabled.
 - A request being accepted or a green icon alone is not an independent playback
