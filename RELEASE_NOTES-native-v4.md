@@ -25,7 +25,7 @@ Other Spotify binary versions, long-term license renewal and cellular-only downl
 
 ## Download and source code
 
-- **Published IPA post:** https://t.me/glongqforks/2
+- **Download the ready-made IPA:** https://t.me/glongqforks/2 — open the post and download its `.ipa` attachment. Install with SideStore or import into LiveContainer (the two tested methods).
 - **Updates and announcements:** https://t.me/glongqforks
 - **Source code, build instructions and tests:** this GitHub repository. GitHub generates the source archives attached to this release automatically.
 
