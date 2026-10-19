@@ -110,6 +110,7 @@ class ChromeHost:UIViewController {
       let cell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:row,section:section))
       if let content=cell.contentConfiguration as? UIListContentConfiguration {
        precondition(!(content.text ?? "").contains("WAV"),"WAV row still present")
+       precondition(!(content.text ?? "").contains("Заглушить") && !(content.text ?? "").contains("Mute audio"),"mute row still present")
       }
      }}
      page.tableView.setContentOffset(CGPoint(x:0,y:max(0,page.tableView.contentSize.height-page.tableView.bounds.height+page.tableView.adjustedContentInset.bottom)),animated:false)
@@ -125,7 +126,7 @@ class ChromeHost:UIViewController {
        self.write("PASS: legacy and module-qualified native page protocols; diagnostics switch defaults OFF and toggles ON/OFF")
       } else {preconditionFailure("diagnostics switch not visible")}
 
-      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:3,section:2)),to:window)
+      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:2,section:2)),to:window)
       self.write("downloads last row bottom=\(last.maxY); mini top=\(miniTop); inset=\(page.tableView.contentInset)")
       precondition(last.maxY<=miniTop-10,"downloads row under mini-player")
       page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:1,section:2))

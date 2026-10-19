@@ -92,7 +92,7 @@ Tools/alt-icons.sh "$OUT_IPA"
 if [ "${NATIVE_DOWNLOADS:-0}" = "1" ]; then
     color "Native Downloads overlay (exact guarded Spotify build required)"
     python3 "$REPO_DIR/NativeDownloads/tools/build.py" "$REPO_DIR/$OUT_IPA"
-    echo "Native Downloads output: $REPO_DIR/NativeDownloads/outputs/spotify-ui-v4.ipa"
+    echo "Native Downloads output: $REPO_DIR/NativeDownloads/outputs/spotify-ui-v7.ipa"
 fi
 
 color "Done"

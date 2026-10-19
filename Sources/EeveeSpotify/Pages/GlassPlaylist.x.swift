@@ -194,12 +194,12 @@ extension GlassPlaylist {
         return found
     }
 
-    static func actionRow(host: UIView, controls: UIView, scroll: UIScrollView? = nil) -> Bool {
-        guard let shuffle = PageLookup.find("Components.UI.ShuffleButton", in: controls),
-              let play = PageLookup.find("header-play-button", in: controls) else { return false }
+    static func actionRow(host: UIView, controls: UIView, scroll: UIScrollView? = nil, preservePreviewLayout: Bool = false) -> Bool {
+        let sourceShuffle = PageLookup.find("Components.UI.ShuffleButton", in: controls)
+        let sourcePlay = PageLookup.find("header-play-button", in: controls)
+            guard let shuffle = sourceShuffle, let play = sourcePlay else { return false }
         let add = PageLookup.find("Components.UI.AddToButton", in: controls)
         let share = PageLookup.find("Components.UI.ShareButton", in: controls)
-        let explore = PageLookup.find("Components.UI.WatchFeedEntityExplorerButton", in: controls)
         let follow = PageLookup.find("Curation.FollowButtonElementKit.FollowButton", in: controls)
 
         for control in [shuffle, add, share, follow].compactMap({ $0 }) {
@@ -212,12 +212,14 @@ extension GlassPlaylist {
             objc_setAssociatedObject(host, &rowKey, row, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             return row
         }()
+        let download = PlaylistDownloadControl.resolve(in: controls)
+        let explore = row.sourceRoot === controls && row.hosts(row.explore) ? row.explore : PageLookup.find("Components.UI.WatchFeedEntityExplorerButton", in: controls)
         if row.superview !== host || host.subviews.last !== row { host.addSubview(row) }
+        row.bindNative(download: download, preview: explore, root: controls, preservePreviewLayout: preservePreviewLayout)
         row.shuffle = shuffle
         row.play = play
         row.add = add
         row.share = share
-        row.explore = explore
         row.followControl = follow
         row.anchor = add ?? shuffle
         row.playHolder = holder(of: play)
@@ -230,6 +232,7 @@ extension GlassPlaylist {
         if host.window != nil { PlaylistActionRow.current = row }
         return true
     }
+
 
     static func row(near view: UIView) -> PlaylistActionRow? {
         if let row = (objc_getAssociatedObject(view, &nearRowKey) as? PageLookup.WeakView)?.view as? PlaylistActionRow { return row }

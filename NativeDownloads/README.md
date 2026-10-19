@@ -1,9 +1,10 @@
-# Experimental Native Downloads — source release v4
+# Experimental Native Downloads — UI release v7
 
-This directory contains the native-download extension used in `spotify-ui-v4`.
+This directory contains the native-download extension used in `spotify-ui-v7`.
 It is an independently built companion library for EeveeSpotifyReincarnated.
-The release runtime sources are preserved byte-for-byte from the recorded v4
-snapshot. `provenance.json` lists their SHA-256 hashes and the upstream base.
+The download runtime is unchanged from v4. The settings UI removes the manual
+mute action. `provenance.json` preserves the v4 hashes; `provenance-ui-v7.json`
+records the current UI sources and the unchanged download backend.
 The packaging and test scripts have been adapted for this repository.
 
 Implementation, integration, documentation and local builds: **OpenAI Codex**,
@@ -43,12 +44,13 @@ Spotify IPA, or an already modified v1–v4 IPA, is not the input for this comma
 
 ```sh
 python3 NativeDownloads/tools/test_patchers.py
-python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa
+THEOS_PACKAGE_SCHEME=rootless make -j2 all FINALPACKAGE=1
+python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa --eevee-dylib .theos/obj/EeveeSpotify.dylib
 ```
 
 Outputs are in `NativeDownloads/outputs/`:
 
-- `spotify-ui-v4.ipa`: output IPA; installation has been verified via SideStore and LiveContainer on the tested device.
+- `spotify-ui-v7.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
 - `SpotifyAudioProbe.dylib`: the companion library.
 - `build-manifest.json`: input/output hashes, source hashes and patch details.
 
@@ -58,6 +60,9 @@ The builder rejects unrecognised or already patched native binaries. It verifies
 archive integrity, native instruction guards, generated quota constants, dyld
 imports, and source hashes. The output is ad-hoc signed for packaging; installation
 still requires the receiving installation tool's normal signing process.
+The v7 glass controls require a rebuilt Eevee library. The builder rejects an old
+library without the new action-row markers. When the supplied IPA already contains
+the newly compiled Eevee UI, `--eevee-dylib` can be omitted.
 
 ## GitHub Actions
 
@@ -65,7 +70,9 @@ Use **Native Downloads — Validate / Build IPA**. Validation runs on pushes and
 pull requests without an IPA. To build, select **Run workflow** and supply an HTTPS
 direct-download URL for your own compatible EeveeSpotify base IPA. The output is
 an Actions artifact; this workflow does not create a public release. Leave the URL
-empty to run validation only.
+empty to run validation only. With an original 7.0.0 base, also supply the URL of
+an Eevee library compiled from the current sources. The workflow does not compile
+the Theos project itself.
 
 The older upstream IPA workflows produce upstream builds. They do not implicitly
 include this overlay. For a local full upstream rebuild followed by the overlay:
@@ -113,15 +120,53 @@ python3 NativeDownloads/tools/test_settings_ui.py
 The fixture checks settings layout, RU/EN, page protocols and mini-player clearance.
 It does not simulate Spotify downloading or prove device playback.
 
-## Source map
+The glass action-row fixture compiles the actual production row and the shared
+native tap helper. It checks widths 320–768 pt, horizontal scrolling, Play staying
+at the right edge, native download state changes and one action per control. It
+also reproduces the artist header’s initially hidden 8 pt preview and its delayed
+appearance without a second controller layout:
 
-- `src/TrackDownload.m`: single-track command, transport selection and confirmation.
-- `src/NativeOffline.m`: native-manager integration, quota preparation and observations.
+```sh
+python3 Tests/PlaylistActionRow/test.py
+```
+
+## UI v7
+
+Spotify's original download control receives Eevee's shared `GlassKit.pane`
+background. Its native foreground, outline, animations, accessibility, icon subtree
+and handlers are preserved. No replacement download button, icon snapshot,
+forwarded download tap or download-model hook is used.
+
+The native header lookup handles `DownloadButton.Granular.*` states verified in
+the running iPhone, as well as `Components.UI.DownloadIcon` and the older
+`Components.UI.DownloadButton`. Binding is cached per header, including missing
+results. A new lookup is allowed when a native control is replaced; a header
+without a control gets one retry when it enters a window. There is no periodic
+search or timer.
+
+The native download control is mounted once into the horizontal action area.
+On playlist/album pages the native preview is mounted after its initial hidden
+state completes. Play stays separately at the right. No download control is
+fabricated on pages where Spotify has none.
+
+Artist previews stay entirely in Spotify's native Element/OverflowStack layout:
+no reparenting, frame changes, new glass background or replacement tap handler.
+The custom action strip starts after the preview's current native drawing/hit
+area, including content extending beyond its layout shell. Scoped native
+hidden/bounds/center notifications coalesce geometry updates onto one main-queue
+turn. No timer, display-link, full-screen scan or repeated reparenting is used.
+
+The original v4–v6 provenance files and local archives are preserved.
+
+## Source map and verification
+
+- `src/TrackDownload.m`: native single-track requests and completion checks.
+- `src/NativeOffline.m`: native-manager preparation and observations.
 - `src/OfflineFlags.m`, `src/OfflineConfig.m`: local offline configuration.
-- `src/TrackJournal.m`, `src/NativeErrorLog.m`: optional diagnostic observations.
-- `src/DownloadSettingsUI.m`: embedded settings entry and UIKit pages.
-- `src/AudioProbe.c`: audio diagnostics and manual mute; capture is disabled in release.
-- `tools/patch_*.py`: guarded packaging-time changes to the provided binaries.
+- `src/TrackJournal.m`, `src/NativeErrorLog.m`: optional diagnostics.
+- `src/DownloadSettingsUI.m`: settings UI; the manual mute row is removed in UI v7.
+- `tools/patch_*.py`: version-guarded packaging changes.
 
-See [architecture and verification](../docs/native-downloads.md) and the root
-[GPLv3 licence](../LICENSE). Original upstream attribution is retained.
+See [architecture and recorded verification](../docs/native-downloads.md) and the
+root [GPLv3 licence](../LICENSE). Upstream attribution is retained. Publishing the
+v7 source revision does not replace the ready-made v4 IPA linked on the main page.

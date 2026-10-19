@@ -38,9 +38,11 @@ def key_fixture():
 
 
 class ProvenanceTests(unittest.TestCase):
-    def test_v4_runtime_snapshot(self):
-        provenance = json.loads((ROOT / 'provenance.json').read_text())
-        self.assertEqual(provenance['release'], 'spotify-ui-v4')
+    def test_v7_runtime_snapshot_and_preserved_v4_backend(self):
+        previous = json.loads((ROOT / 'provenance.json').read_text())
+        provenance = json.loads((ROOT / 'provenance-ui-v7.json').read_text())
+        self.assertEqual(previous['release'], 'spotify-ui-v4')
+        self.assertEqual(provenance['release'], 'spotify-ui-v7')
         self.assertFalse(provenance['wav_capture_enabled'])
         expected = provenance['source_sha256_by_file']
         actual_names = {'src/' + p.name for p in (ROOT / 'src').iterdir() if p.is_file()}
@@ -48,6 +50,11 @@ class ProvenanceTests(unittest.TestCase):
         for name, digest in expected.items():
             with self.subTest(file=name):
                 self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+                if name != 'src/DownloadSettingsUI.m':
+                    self.assertEqual(digest, previous['source_sha256_by_file'][name])
+        for name, digest in provenance['eevee_source_sha256_by_file'].items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest(), digest)
 
     def test_generated_headers(self):
         self.assertEqual((ROOT / 'src/NativeRestrictionsPatch.h').read_text(), restrictions.guard_header())

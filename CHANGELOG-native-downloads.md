@@ -1,5 +1,15 @@
 # Native Downloads changelog
 
+## Source revision UI v7 — 2026-10-19
+
+- Publish the current UI v7 sources and retain v5/v6 provenance snapshots.
+- Style Spotify's original download control with the shared glass background and retain its native action/state.
+- Add a horizontally scrolling header action area with Play at the right edge.
+- Keep artist previews under native layout ownership and account for delayed preview visibility.
+- Remove the manual mute row from the extension's settings UI; the native download backend remains the v4 snapshot.
+- Fix RTL text-direction handling and require a current Eevee UI library for v7 builds.
+- Preserve the reorganised main page, v4 IPA links and existing v4 release notes. This commit publishes sources only.
+
 ## Installation verification update — 2026-10-19
 
 - Maintainer confirmed v4 installation, native downloads and offline playback

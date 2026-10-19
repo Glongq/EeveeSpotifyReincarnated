@@ -10,7 +10,11 @@
 **Upstream:** [SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)  
 **License:** [GPLv3](LICENSE), with the upstream Git history and contributor attribution retained.
 
-## Experimental Native Downloads — v4
+## Experimental Native Downloads
+
+**Current source revision:** `spotify-ui-v7` — glass download controls and header-layout updates, plus removal of the manual mute row. The native-download backend remains the recorded v4 implementation. This is a source update; the ready-made IPA linked below remains **v4**.
+
+### Verified v4 download baseline
 
 Native Spotify album/playlist downloads and a **Track downloads** section in EeveeSpotify settings. Downloads use Spotify's own offline storage; the extension does **not** export MP3 or WAV files. The user interface supports English and Russian; WAV recording is disabled.
 
@@ -48,16 +52,17 @@ The maintainer confirms that downloads and offline playback work through both Si
 
 This repository contains **source code, build scripts and tests**, not a publicly hosted modified Spotify IPA. The [Releases page](https://github.com/Glongq/EeveeSpotifyReincarnated/releases) contains no published IPA release at the time of this documentation update.
 
-For the checked overlay, supply your own **unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 base IPA** (not a vanilla Spotify IPA and not an already modified v1–v4 IPA). On macOS with full Xcode, iPhoneOS SDK and Python 3:
+For the checked overlay, supply your own **unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 base IPA** (not a vanilla Spotify IPA and not an already modified v1–v4 IPA). For the current v7 UI, rebuild Eevee using the [documented Theos dependencies](NativeDownloads/README.md#build-the-checked-overlay) and pass that library to the overlay builder. On macOS with the configured toolchain:
 
 ```sh
 python3 NativeDownloads/tools/test_patchers.py
-python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa
+THEOS_PACKAGE_SCHEME=rootless make -j2 all FINALPACKAGE=1
+python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa --eevee-dylib .theos/obj/EeveeSpotify.dylib
 ```
 
-Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA](https://github.com/Glongq/EeveeSpotifyReincarnated/actions/workflows/native-downloads.yml): run the workflow manually with a direct HTTPS URL to your compatible base IPA. The built IPA and manifest are uploaded as **temporary Actions artifacts**. A green validation result alone does **not** mean an IPA was built; the build job runs only when the IPA URL is supplied.
+Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA](https://github.com/Glongq/EeveeSpotifyReincarnated/actions/workflows/native-downloads.yml): run the workflow manually with a direct HTTPS URL to your compatible base IPA. For v7 UI builds from an original base IPA, also supply `eevee_dylib_url` pointing to a library built from the current sources. The workflow does not compile Theos itself. The built IPA and manifest are uploaded as **temporary Actions artifacts**. A green validation result alone does **not** mean an IPA was built; the build job runs only when the IPA URL is supplied.
 
-See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [v4 changelog](CHANGELOG-native-downloads.md), and [source hashes](NativeDownloads/provenance.json).
+See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7 source hashes](NativeDownloads/provenance-ui-v7.json).
 
 ### Reporting issues
 

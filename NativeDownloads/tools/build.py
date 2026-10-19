@@ -22,18 +22,26 @@ def run(*args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build the v4 native-download overlay for the guarded Spotify 9.1.88 binary.")
+    parser = argparse.ArgumentParser(description="Build the UI release and native-download overlay for the guarded Spotify 9.1.88 binary.")
     parser.add_argument("ipa", type=Path, help="An unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 IPA supplied by you")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT)
+    parser.add_argument("--provenance", type=Path, default=ROOT / "provenance-ui-v7.json")
+    parser.add_argument("--eevee-dylib", type=Path, help="EeveeSpotify.dylib compiled from the current UI sources; otherwise use the input IPA's Eevee library")
     args = parser.parse_args()
     source = args.ipa.expanduser().resolve()
     output = args.output_dir.expanduser().resolve()
     if not source.is_file():
         parser.error("Input IPA does not exist")
-    provenance = json.loads((ROOT / "provenance.json").read_text())
+    provenance = json.loads(args.provenance.expanduser().resolve().read_text())
     for name, expected in provenance["source_sha256_by_file"].items():
         if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != expected:
-            raise RuntimeError(f"Source differs from the published v4 snapshot: {name}. Review and update provenance before building a changed release.")
+            raise RuntimeError(f"Source differs from {provenance['release']} provenance: {name}. Review before building a changed release.")
+    for name, expected in provenance.get("eevee_source_sha256_by_file", {}).items():
+        if hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f"Eevee UI source differs from release provenance: {name}")
+    eevee_input = args.eevee_dylib.expanduser().resolve().read_bytes() if args.eevee_dylib else None
+    import os
+    os.chdir(ROOT)
     with ZipFile(source) as check:
         import plistlib
         plist = next(n for n in check.namelist() if n.startswith("Payload/") and n.count("/") == 2 and n.endswith(".app/Info.plist"))
@@ -43,7 +51,12 @@ def main():
         # Validate all native guards and the Eevee target before compilation.
         app = plist.rsplit("/", 1)[0]
         patch_key_request_mode(patch_native_restrictions(check.read(f"{app}/{info['CFBundleExecutable']}"))[0])
-        patch_reminder(check.read(f"{app}/Frameworks/EeveeSpotify.dylib"))
+        if eevee_input is None:
+            eevee_input = check.read(f"{app}/Frameworks/EeveeSpotify.dylib")
+        for marker in provenance.get("eevee_required_markers", []):
+            if marker.encode() not in eevee_input:
+                raise RuntimeError("The Eevee library lacks the new UI. Rebuild Eevee and pass --eevee-dylib /path/to/EeveeSpotify.dylib")
+        patch_reminder(eevee_input)
     output.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(exist_ok=True)
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
@@ -82,14 +95,14 @@ def main():
             if not matches or not all("SpotifyAudioProbe" in line for line in matches):
                 raise RuntimeError(f"dyld does not resolve {change['symbol']} through the probe: {matches}")
         eevee_entry = f"{app}/Frameworks/EeveeSpotify.dylib"
-        eevee_data, reminder = patch_reminder(original.read(eevee_entry))
+        eevee_data, reminder = patch_reminder(eevee_input)
         patched_eevee = BUILD / "EeveeSpotify-offline.dylib"
         patched_eevee.write_bytes(eevee_data)
         run("codesign", "--force", "--sign", "-", "--timestamp=none", patched_eevee)
         run("codesign", "--verify", "--strict", patched_eevee)
         run("xcrun", "dyld_info", "-validate_only", patched_eevee)
         manifest["offline_reminder_patch"] = reminder
-        archive = output / "spotify-ui-v4.ipa"
+        archive = output / (provenance["release"] + ".ipa")
         if archive.resolve() == source:
             raise RuntimeError("Output must differ from the input IPA")
         with ZipFile(archive, "w", allowZip64=True) as updated:
@@ -108,12 +121,13 @@ def main():
                      "output": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
                      "library_sha256": hashlib.sha256(library.read_bytes()).hexdigest(), "changed_entries": changed,
                      "ui_release": provenance["release"], "wav_capture_enabled": False,
-                     "source_sha256_by_file": provenance["source_sha256_by_file"]})
+                     "source_sha256_by_file": provenance["source_sha256_by_file"],
+                     "eevee_source_sha256_by_file": provenance.get("eevee_source_sha256_by_file", {}),
+                     "eevee_input_sha256": hashlib.sha256(eevee_input).hexdigest(),
+                     "eevee_output_sha256": hashlib.sha256(patched_eevee.read_bytes()).hexdigest()})
     (output / "build-manifest.json").write_text(json.dumps(manifest, indent=2))
     print(json.dumps(manifest, indent=2))
 
 
 if __name__ == "__main__":
-    import os
-    os.chdir(ROOT)
     main()

@@ -108,3 +108,17 @@ Native-download development, fork integration, documentation and local builds we
 produced with OpenAI Codex under Glongq's direction. Glongq performed device testing
 and supplied feedback. The upstream EeveeSpotify project retains its original
 authorship, history and GPLv3 licence.
+
+## Current source revision: UI v7
+
+The current source branch includes v7 header-control and settings changes. The
+native-download backend remains the recorded v4 snapshot; only
+`NativeDownloads/src/DownloadSettingsUI.m` changes within that runtime source set.
+`NativeDownloads/provenance-ui-v7.json` also records the six Eevee source files
+required by the new UI. Portable checks compare both source sets against their
+hashes and verify preservation of the v4 backend.
+
+The ready-made IPA and physical-device results described above remain the v4
+baseline. Source publication does not by itself establish a new device-verification
+result or update the published IPA. For current UI builds, follow the updated
+[build guide](../NativeDownloads/README.md#build-the-checked-overlay).

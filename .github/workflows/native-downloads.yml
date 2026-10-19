@@ -16,6 +16,11 @@ on:
         required: false
         default: ''
         type: string
+      eevee_dylib_url:
+        description: 'HTTPS URL of EeveeSpotify.dylib compiled from current sources; required when ipa_url is an original 7.0.0 base'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -47,12 +52,21 @@ jobs:
           case "$SOURCE_IPA_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
           curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$SOURCE_IPA_URL" --output "$RUNNER_TEMP/source.ipa"
       - name: Build guarded native-download overlay
-        run: python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa"
+        env:
+          EEVEE_DYLIB_URL: ${{ inputs.eevee_dylib_url }}
+        run: |
+          args=()
+          if [ -n "$EEVEE_DYLIB_URL" ]; then
+            case "$EEVEE_DYLIB_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
+            curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$EEVEE_DYLIB_URL" --output "$RUNNER_TEMP/EeveeSpotify.dylib"
+            args+=(--eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib")
+          fi
+          python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa" "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
-          name: spotify-ui-v4-native-downloads
+          name: spotify-ui-v7-native-downloads
           if-no-files-found: error
           retention-days: 7
           path: |
-            NativeDownloads/outputs/spotify-ui-v4.ipa
+            NativeDownloads/outputs/spotify-ui-v7.ipa
             NativeDownloads/outputs/build-manifest.json

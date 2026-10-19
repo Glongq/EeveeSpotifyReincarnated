@@ -225,7 +225,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
     if(section==0)return [self.snapshot[@"download_active"]boolValue]?3:2;
     if(section==1)return 3;
-    return 4;
+    return 3;
 }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
     return @[SAPL(@"Загрузка",@"Download"),SAPL(@"Журнал загрузок",@"Download log"),SAPL(@"Диагностика",@"Diagnostics")][section];
@@ -245,8 +245,8 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
         title=@[SAPL(@"Состояние загрузок",@"Download status"),SAPL(@"Экспорт журнала",@"Export download log"),SAPL(@"Сбросить журнал",@"Reset download log")][index.row];
         symbol=@[@"chart.bar.fill",@"square.and.arrow.up",@"trash.fill"][index.row];color=index.row==2?UIColor.systemGrayColor:UIColor.systemBlueColor;chevron=index.row==0;
     }else {
-        title=@[SAPL(@"Диагностика",@"Diagnostics"),SAPL(@"Диагностика аудио",@"Audio diagnostics"),SAPL(@"Заглушить аудио на 2 секунды",@"Mute audio for 2 seconds"),SAPL(@"Экспорт отчёта",@"Export report")][index.row];
-        symbol=@[@"slider.horizontal.3",@"waveform.path.ecg",@"speaker.slash.fill",@"square.and.arrow.up"][index.row];color=UIColor.systemTealColor;chevron=index.row==1;
+        title=@[SAPL(@"Диагностика",@"Diagnostics"),SAPL(@"Диагностика аудио",@"Audio diagnostics"),SAPL(@"Экспорт отчёта",@"Export report")][index.row];
+        symbol=@[@"slider.horizontal.3",@"waveform.path.ecg",@"square.and.arrow.up"][index.row];color=UIColor.systemTealColor;chevron=index.row==1;
     }
     UITableViewCell *cell=SAPSettingsCell(table,title,subtitle,symbol,color,chevron);
     if(index.section==2 && index.row==0) {
@@ -267,7 +267,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
     SAPSettingsAction action;
     if(index.section==0)action=index.row==0?SAPSettingsDownload:(index.row==1?SAPSettingsVerify:SAPSettingsCancelDownload);
     else if(index.section==1)action=index.row==1?SAPSettingsExportJournal:SAPSettingsResetJournal;
-    else action=index.row==2?SAPSettingsMute:SAPSettingsExportReport;
+    else action=SAPSettingsExportReport;
     if(action==SAPSettingsResetJournal) {
         UIAlertController *confirm=[UIAlertController alertControllerWithTitle:SAPL(@"Сбросить журнал?",@"Reset download log?") message:SAPL(@"Будет очищена история диагностики загрузок.",@"This will clear the download diagnostic history.") preferredStyle:UIAlertControllerStyleAlert];
         [confirm addAction:[UIAlertAction actionWithTitle:SAPL(@"Отмена",@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
