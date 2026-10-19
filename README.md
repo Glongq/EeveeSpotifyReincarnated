@@ -18,6 +18,23 @@ device testing and feedback. Upstream code retains its original authorship.
 
 ## Experimental native downloads — v4
 
+### Tested installation methods
+
+- **LiveContainer:** IPA installation, experimental native downloads and offline playback tested on iPhone 15 Pro Max (iOS 27.0.1).
+- **SideStore:** IPA installation confirmed by the fork maintainer. Native-download/offline-playback regression tests through SideStore are not separately documented.
+- **Other installers (TrollStore, jailbreak, paid certificates):** Not tested with this fork's native-download extension.
+
+**Compatibility:** Spotify 9.1.88 with the exact guarded binary, EeveeSpotify 7.0.0. A matching version label alone does not guarantee compatibility.
+
+### Builds and releases
+
+- [Source code, setup and build instructions](NativeDownloads/README.md)
+- [Native Downloads workflow](.github/workflows/native-downloads.yml): provide your own compatible, unmodified EeveeSpotify base IPA and download the temporary Actions artifact. A green validation result alone does not mean an IPA was built.
+- [Fork releases](https://github.com/Glongq/EeveeSpotifyReincarnated/releases): release notes when published; this repository currently has no published IPA release.
+
+This is an **unofficial fork**. Credits for the base EeveeSpotify project remain with the upstream contributors; the native-download extension and local builds were developed with **OpenAI Codex under Glongq's direction**.
+
+
 This fork adds native Spotify album/playlist downloading and a **Track downloads**
 section inside EeveeSpotify settings. Verified on the guarded **Spotify 9.1.88**
 binary with **EeveeSpotify 7.0.0 in LiveContainer**. Downloads stay in Spotify's
