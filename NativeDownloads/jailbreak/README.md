@@ -1,6 +1,6 @@
 # Native downloads v7 — jailbreak packages
 
-Local development port of `spotify-ui-v7`, based on fork source commit
+Lifecycle revision v7.2 of `spotify-ui-v7`, based on fork source commit
 `1e93d081d49cd0273c9493665b30b69994aea156`. Built with OpenAI Codex under
 Glongq's direction. This is an unofficial fork of EeveeSpotifyReincarnated.
 
@@ -31,17 +31,22 @@ WAV capture stays disabled, as in the v7 release.
 The IPA applied two guarded executable patches before signing. Jailbreak loading
 applies the same bytes to the **mapped process image** through `MSHookMemory`:
 
-1. Check the exact Mach-O UUID, executable text, reserved header padding, quota
-   setter, key caller, provider and mode-mapping instructions.
-2. Install the existing quota trampoline, then its entry branch, then change
-   the existing offline caller's key-request mode from 1 to 0.
+1. During library loading, validate the exact UUID, instructions and initializer
+   signature and register one offline-manager initializer hook. No executable
+   memory or AudioToolbox import writes occur during this preflight.
+2. On the first native offline-manager construction, before forwarding its init,
+   install the existing quota trampoline/entry branch and key mode 0. Arguments
+   and the retained initializer result are forwarded unchanged.
 3. Check each write and attempt rollback if any write is partial or rejected.
 4. Rebind only Spotify's five AudioToolbox imports for audio diagnostics. Original
    AudioToolbox implementations remain available to the probe, avoiding recursion.
-5. Skip Eevee's download reminder only when the native adapter initialized.
+5. Skip Eevee's download reminder when a validated native initializer hook owns
+   download handling. Readiness is reported separately after patch application.
 
 No executable file in the Spotify app is rewritten. Patching is once per process,
 without a periodic code writer. Existing v7 download scheduling remains unchanged.
+An executable writer bundled inside the app is rejected; exporting the symbol
+alone does not prove a sideloaded app can modify executable pages.
 
 ## Build locally
 
@@ -58,7 +63,7 @@ The script builds the renamed EeveeSwiftProtobuf dependency if absent, verifies
 v7 provenance, tests runtime guards/rollback, builds both packages, then checks
 package paths, injection filter, native symbols, dependencies, signatures and
 minimum deployment targets. It does not push, tag, or create a release.
-Outputs are in `NativeDownloads/outputs/jailbreak-v7/`.
+Outputs are in `NativeDownloads/outputs/jailbreak-v7.2/`.
 
 ## Device acceptance test still required
 
@@ -72,3 +77,12 @@ and the downloads menu on a pre-iOS-26 device with glass disabled.
 Do not label this port device-verified until those checks pass on a real
 jailbroken device. An unsupported Spotify image should remain unchanged and log
 an inactive adapter rather than trying nearby offsets.
+
+## v7.2 validation status
+
+This release contains jailbreak DEBs only. Install through the jailbreak package
+manager; converting a DEB into an IPA is not a supported installation path.
+
+The startup path was changed after reported v7.1 launch failures. The remote
+crash has not been reproduced locally or confirmed resolved on the affected
+device. v7.2 remains an unverified pre-release.

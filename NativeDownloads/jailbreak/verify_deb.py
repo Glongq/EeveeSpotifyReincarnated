@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='eevee-v7-deb-') as folder:
     for marker in ('v7 jailbreak adapter','Track downloads','SAPDownloadsSettings', 'offline-quota'):
         assert marker in text,marker
     symbols=run('nm','-g',dylib)
-    for symbol in ('_EeveeNativeDownloadsIsReady','_SpotifyAudioProbeInitialize','_AudioUnitSetProperty','_AudioOutputUnitStart'):
+    for symbol in ('_EeveeNativeDownloadsIsReady','_EeveeNativeDownloadsWillHandleDownloads','_SpotifyAudioProbeInitialize','_AudioUnitSetProperty','_AudioOutputUnitStart'):
         assert re.search(r'\bT '+symbol+r'$',symbols,re.M),symbol
     dependencies=run('otool','-L',dylib)
     assert 'EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf' in dependencies

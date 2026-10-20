@@ -6,6 +6,8 @@
 #import <mach-o/loader.h>
 #import <mach/mach.h>
 #import <dlfcn.h>
+#import <objc/runtime.h>
+#include <stdatomic.h>
 #import <libkern/OSCacheControl.h>
 #import "fishhook.h"
 #import "Guards.h"
@@ -13,7 +15,9 @@
 #import <ptrauth.h>
 #endif
 
-static BOOL ready;
+static atomic_bool ready;
+static BOOL lifecycleInstalled;
+static void *(*managerInit)(void *,SEL,void *,void *,void *,void *);
 static BOOL bytes(const void *a, const void *b, size_t n) { return memcmp(a,b,n)==0; }
 #ifdef SAP_JB_TEST
 extern const struct mach_header_64 *JBTestHeader;
@@ -28,6 +32,16 @@ static BOOL writeCode(void *target, const void *data, size_t size) {
     void (*hookMemory)(void *,const void *,size_t)=dlsym(RTLD_DEFAULT,"MSHookMemory");
     if (!hookMemory) {
         NSLog(@"[EeveeSpotify][NativeDownloads] MSHookMemory unavailable; leaving Spotify unchanged");
+        return NO;
+    }
+    // A sideloaded IPA may bundle the same symbol without permission to patch
+    // signed executable pages. Presence of MSHookMemory is not a capability check.
+    Dl_info engine={0};
+    if(!dladdr((void *)hookMemory,&engine) || !engine.dli_fname) return NO;
+    NSString *enginePath=[[@(engine.dli_fname) stringByResolvingSymlinksInPath] stringByStandardizingPath];
+    NSString *appRoot=[[NSBundle.mainBundle.bundlePath stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
+    if([enginePath hasPrefix:appRoot]) {
+        NSLog(@"[EeveeSpotify][NativeDownloads] Refusing app-bundled executable writer; use the statically patched IPA");
         return NO;
     }
     hookMemory(target,data,size);
@@ -62,7 +76,7 @@ static void installAudioImports(const struct mach_header_64 *header, intptr_t sl
 }
 #endif
 
-static BOOL install(void) {
+static BOOL prepare(BOOL apply) {
 #ifdef SAP_JB_TEST
     const struct mach_header_64 *header=JBTestHeader;
 #else
@@ -109,6 +123,7 @@ static BOOL install(void) {
        (!setterPatched && !bytes(setter,JB_SetterOriginal,4)) ||
        (setterPatched ? !bytes(cave,JB_Trampoline,sizeof(JB_Trampoline)) :
          !bytes(cave,zero,sizeof(zero)))) return NO;
+    if(!apply) return YES; // Read-only preflight during dylib initialization.
     // Preflight every guard before changing anything. Cave first, branch second.
     if(!setterPatched) {
         if(!writeCode(cave,JB_Trampoline,sizeof(JB_Trampoline))) {
@@ -132,13 +147,43 @@ static BOOL install(void) {
     return YES;
 }
 
-BOOL EeveeNativeDownloadsIsReady(void) {
+static BOOL install(void) { return prepare(YES); }
+
+static void activateForManager(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        ready=install();
-        NSLog(@"[EeveeSpotify][NativeDownloads] v7 jailbreak adapter %@",ready?@"ready":@"inactive (unsupported binary or patch engine)");
+        BOOL installed=install();
+        atomic_store_explicit(&ready,installed,memory_order_release);
+        NSLog(@"[EeveeSpotify][NativeDownloads] v7 jailbreak adapter %@ at offline-manager initialization",installed?@"ready":@"inactive");
     });
-    return ready;
+}
+
+static void *initializeManager(void *object,SEL selector,void *scheduler,void *manager,void *sync,void *metadata) {
+    // Preserve init's consumed-self/retained-result ABI exactly, like v7's existing
+    // native wrapper hook. Apply before the original constructor can start work.
+    activateForManager();
+    return managerInit(object,selector,scheduler,manager,sync,metadata);
+}
+
+BOOL EeveeNativeDownloadsWillHandleDownloads(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        if(!prepare(NO)) return;
+        Class cls=NSClassFromString(@"SPTOfflineManagerImplementation");
+        SEL selector=NSSelectorFromString(@"initWithScheduler:offlineManager:syncManager:metadataModel:");
+        Method method=class_getInstanceMethod(cls,selector);
+        if(!method || method_getNumberOfArguments(method)!=6) return;
+        char type[16];method_getReturnType(method,type,sizeof(type));
+        if(type[0]!='@') return;
+        managerInit=(void *)method_getImplementation(method);
+        class_replaceMethod(cls,selector,(IMP)initializeManager,method_getTypeEncoding(method));
+        lifecycleInstalled=YES;
+    });
+    return lifecycleInstalled;
+}
+
+BOOL EeveeNativeDownloadsIsReady(void) {
+    return atomic_load_explicit(&ready,memory_order_acquire);
 }
 
 #ifdef SAP_JB_IMPORT_TEST
@@ -149,6 +194,6 @@ __attribute__((visibility("default"))) void SAPJBTestInstallImports(void) {
 
 #if !defined(SAP_JB_TEST) && !defined(SAP_JB_IMPORT_TEST)
 __attribute__((constructor(101))) static void loadNativeAdapter(void) {
-    @autoreleasepool { EeveeNativeDownloadsIsReady(); }
+    @autoreleasepool { EeveeNativeDownloadsWillHandleDownloads(); }
 }
 #endif

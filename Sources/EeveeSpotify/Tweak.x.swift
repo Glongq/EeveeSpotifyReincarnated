@@ -41,7 +41,7 @@ struct LatestPremiumPatchingGroup: HookGroup { }
 // Early 9.1.x builds dropped the offline helper; newer ones bring it back.
 func activateV91ServerSidedReminderIfAvailable() {
     #if NATIVE_DOWNLOADS_JAILBREAK
-    if EeveeNativeDownloadsIsReady() { return }
+    if EeveeNativeDownloadsWillHandleDownloads() { return }
     #endif
     let className = ContentOffliningUIHelperImplementationModernHook.targetName
     let selector = Selector((
@@ -80,7 +80,7 @@ func activatePremiumPatchingGroup() {
         }
         else {
             #if NATIVE_DOWNLOADS_JAILBREAK
-            if !EeveeNativeDownloadsIsReady() {
+            if !EeveeNativeDownloadsWillHandleDownloads() {
                 LatestPremiumPatchingGroup().activate()
             }
             #else

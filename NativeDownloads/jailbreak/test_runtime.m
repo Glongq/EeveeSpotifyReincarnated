@@ -30,11 +30,22 @@ static uint8_t *fixture(void) {
     JBTestHeader=(void *)p; writes=0;failWrite=0;return p;
 }
 static void releaseImage(uint8_t *p) {munmap(p,JB_MappingOffset+4096);}
+static unsigned initialized;
+static void *originalManagerInit(void *object,SEL selector,void *scheduler,void *manager,void *sync,void *metadata) {
+    assert(writes==3 && EeveeNativeDownloadsIsReady());
+    assert(scheduler==(void *)1 && manager==(void *)2 && sync==(void *)3 && metadata==(void *)4);
+    initialized++;return object;
+}
 int main(void) {
     uint8_t *p=fixture();assert(install());assert(writes==3);
     assert(!memcmp(p+JB_KeyCallOffset,JB_KeyPatched,4));
     assert(!memcmp(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline)));
     assert(install());assert(writes==3);releaseImage(p);
+    p=fixture();
+    memcpy(p+JB_SetterOffset,JB_SetterPatched,4);
+    memcpy(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline));
+    memcpy(p+JB_KeyCallOffset,JB_KeyPatched,4);
+    assert(prepare(NO) && install() && writes==0);releaseImage(p);
     const size_t corrupt[]={sizeof(struct mach_header_64)+8,JB_SetterOffset,JB_CaveOffset,JB_KeyWindowOffset,JB_ProviderOffset,JB_MappingOffset};
     for(unsigned i=0;i<sizeof(corrupt)/sizeof(*corrupt);i++) {
         p=fixture();p[corrupt[i]]^=0x80;assert(!install());assert(writes==0);releaseImage(p);
@@ -46,5 +57,19 @@ int main(void) {
         uint8_t zero[sizeof(JB_Trampoline)]={0};assert(!memcmp(p+JB_CaveOffset,zero,sizeof(zero)));
         releaseImage(p);
     }
+    p=fixture();
+    Class cls=objc_allocateClassPair(NSObject.class,"SPTOfflineManagerImplementation",0);
+    SEL selector=NSSelectorFromString(@"initWithScheduler:offlineManager:syncManager:metadataModel:");
+    assert(class_addMethod(cls,selector,(IMP)originalManagerInit,"@48@0:8^v16^v24^v32^v40"));objc_registerClassPair(cls);
+    assert(EeveeNativeDownloadsWillHandleDownloads());
+    assert(EeveeNativeDownloadsWillHandleDownloads());
+    assert(writes==0 && !EeveeNativeDownloadsIsReady());
+    id instance=[cls alloc];
+    void *(*init)(void *,SEL,void *,void *,void *,void *)=(void *)class_getMethodImplementation(cls,selector);
+    assert(init((__bridge void *)instance,selector,(void *)1,(void *)2,(void *)3,(void *)4)==(__bridge void *)instance);
+    assert(writes==3 && initialized==1 && EeveeNativeDownloadsIsReady());
+    assert(init((__bridge void *)instance,selector,(void *)1,(void *)2,(void *)3,(void *)4)==(__bridge void *)instance);
+    assert(writes==3 && initialized==2);releaseImage(p);
     puts("PASS: v7 guards, idempotency, incompatible images, and partial-write rollback");
+    puts("PASS: zero executable writes during startup/preflight; manager event applies once before original init; arguments and result preserved");
 }

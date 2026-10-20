@@ -64,14 +64,18 @@ Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA
 
 See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7 source hashes](NativeDownloads/provenance-ui-v7.json).
 
-### Jailbreak packages — v7 development port
+### Jailbreak packages — v7.2 development port
 
 > [!WARNING]
 > **NOT TESTED ON A REAL JAILBROKEN DEVICE.** These experimental packages passed
 > local tests and package validation only. SideStore/LiveContainer results do not
 > verify this jailbreak port.
 
-**[Download v7 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7-jailbreak)**
+**[Download v7.2 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7.2-jailbreak)**
+
+v7.2 moves executable patching out of library initialization and into the first
+native offline-manager construction. Previous launch failures have **not** been
+confirmed resolved on the affected device. This pre-release contains DEBs only.
 
 The [local jailbreak build guide](NativeDownloads/jailbreak/README.md) builds
 complete rootless and RootHide packages including the native downloader and v7
