@@ -51,6 +51,10 @@ rather than a separately published native diagnostic capture.
 The supplied Eevee reminder handler is disabled by a guarded, one-byte target-name
 change so Spotify's original offlining handler can run. The extension is a
 companion library; ordinary upstream .deb builds do not acquire it automatically.
+The opt-in [v7 jailbreak adapter](../NativeDownloads/jailbreak/README.md) instead
+includes these sources in the Eevee dylib, applies the same guarded changes in
+memory and skips the reminder only after successful initialization. It has a
+separate rootless/RootHide package build and needs jailbreak device validation.
 
 ## Diagnostics and performance
 

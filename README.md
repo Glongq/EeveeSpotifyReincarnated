@@ -64,6 +64,22 @@ Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA
 
 See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7 source hashes](NativeDownloads/provenance-ui-v7.json).
 
+### Jailbreak packages — v7 development port
+
+> [!WARNING]
+> **NOT TESTED ON A REAL JAILBROKEN DEVICE.** These experimental packages passed
+> local tests and package validation only. SideStore/LiveContainer results do not
+> verify this jailbreak port.
+
+**[Download v7 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7-jailbreak)**
+
+The [local jailbreak build guide](NativeDownloads/jailbreak/README.md) builds
+complete rootless and RootHide packages including the native downloader and v7
+settings UI. Minimum iOS is **16.1**; Liquid Glass requires **iOS 26**. Downloads
+still require the exact Spotify 9.1.88 binary identified above. This new runtime
+adapter requires separate testing on a jailbroken device; sideloading results do
+not verify it. The build script does not publish or push anything.
+
 ### Reporting issues
 
 For native-download problems, enable diagnostics if needed and report redacted logs through [this fork's issue tracker](https://github.com/Glongq/EeveeSpotifyReincarnated/issues), not upstream. Please specify whether the issue occurred in SideStore or LiveContainer, the Spotify build and the iOS version.

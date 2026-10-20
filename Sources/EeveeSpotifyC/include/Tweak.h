@@ -10,6 +10,8 @@ UIImage *_Nullable EeveeEncoreIconImage(UIView *iconView, BOOL active);
 BOOL EeveeFireTap(UIView *root);
 int EeveeInstallColorSwaps(BOOL amoled, NSInteger accentRGB);
 void EeveeColorSwapStats(long *grey, long *green, long *uiColor);
+// Defined only in the opt-in jailbreak build; Swift calls it under that flag.
+BOOL EeveeNativeDownloadsIsReady(void);
 BOOL EeveePinSetter(id object, SEL setter, id value);
 BOOL EeveeInterceptBackground(UIView *view, void (^sink)(UIColor *color));
 
