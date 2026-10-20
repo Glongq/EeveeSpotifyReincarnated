@@ -50,7 +50,7 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual(actual_names, set(expected) | {'src/NativeReadiness.h'})
         for name, digest in expected.items():
             with self.subTest(file=name):
-                if name != 'src/NativeOffline.m':
+                if name not in ('src/NativeOffline.m', 'src/Localization.h', 'src/Localization.m', 'src/DownloadSettingsUI.m', 'src/AudioProbeUI.m', 'src/TrackJournal.m'):
                     self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
                 if name != 'src/DownloadSettingsUI.m':
                     self.assertEqual(digest, previous['source_sha256_by_file'][name])
@@ -58,14 +58,14 @@ class ProvenanceTests(unittest.TestCase):
             with self.subTest(file=name):
                 self.assertEqual(hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest(), digest)
 
-    def test_v73_changes_are_limited_to_readiness(self):
+    def test_v73_changes_are_limited_to_readiness_and_presentation(self):
         previous = json.loads((ROOT / 'provenance-ui-v7.json').read_text())
         current = json.loads((ROOT / 'provenance-ui-v7.3.json').read_text())
         expected = current['source_sha256_by_file']
         self.assertEqual({'src/' + f.name for f in (ROOT / 'src').iterdir() if f.is_file()}, set(expected))
         for name, digest in expected.items():
             self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
-            if name not in ('src/NativeOffline.m', 'src/NativeReadiness.h'):
+            if name not in ('src/NativeOffline.m', 'src/NativeReadiness.h', 'src/Localization.h', 'src/Localization.m', 'src/DownloadSettingsUI.m', 'src/AudioProbeUI.m', 'src/TrackJournal.m'):
                 self.assertEqual(digest, previous['source_sha256_by_file'][name])
 
     def test_generated_headers(self):

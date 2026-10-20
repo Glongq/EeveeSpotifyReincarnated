@@ -46,7 +46,7 @@ static void SAPPresent(UIViewController *modal) {
 }
 
 static void SAPMessage(NSString *message) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:SAPL(@"Загрузки треков",@"Track downloads") message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:SAPManagerName message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action){[NSNotificationCenter.defaultCenter postNotificationName:@"SAPDownloadSettingsChanged" object:nil];}]];
     SAPPresent(alert);
 }
@@ -162,7 +162,7 @@ static void put32(uint8_t *p, uint32_t value) { for (unsigned i = 0; i < 4; ++i)
         dispatch_source_set_timer(self->_timer, dispatch_time(DISPATCH_TIME_NOW, 0), 50 * NSEC_PER_MSEC, 10 * NSEC_PER_MSEC);
         dispatch_source_set_event_handler(self->_timer, ^{ [self drain]; });
         dispatch_resume(self->_timer);
-        dispatch_async(dispatch_get_main_queue(), ^{ self.lastFile = url; SAPMessage(SAPL(@"Запись WAV началась. Для завершения открой «Загрузки треков» → «Остановить запись и экспортировать».",@"WAV recording started. To finish, open Track downloads → Stop recording and export.")); });
+        dispatch_async(dispatch_get_main_queue(), ^{ self.lastFile = url; SAPMessage(SAPL(@"Запись WAV началась. Для завершения открой «Загрузки треков» → «Остановить запись и экспортировать».",@"WAV recording started. To finish, open Sprite Download Manager → Stop recording and export.")); });
     });
 }
 
@@ -290,6 +290,7 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
     NSArray *ports = [AVAudioSession.sharedInstance.currentRoute.outputs valueForKey:@"portName"];
     NSString *route = [ports componentsJoinedByString:@", "];
     NSDictionary *report = @{
+        @"manager_name": SAPManagerName,@"manager_version": SAPManagerVersion,@"manager_language": @"en",
         @"probe_version": @24,@"wav_capture_supported":@(SAP_ENABLE_WAV_CAPTURE),@"diagnostics_enabled":@(SAPDiagnosticsEnabled()), @"backend_ready": @(s.backendReady), @"pcm_confirmed": @(s.pcmConfirmed),
         @"au_set_calls": @(s.setPropertyCalls), @"au_callback_attempts": @(s.callbackAttempts),
         @"au_last_scope": @(s.lastCallbackScope), @"au_last_type": fourcc(s.lastComponentType),

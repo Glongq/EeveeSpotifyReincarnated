@@ -19,7 +19,7 @@ from prepare_executable import prepare
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('input', type=Path)
-    p.add_argument('output', type=Path)
+    p.add_argument('output', type=Path, nargs='?', default=Path('Spotify-9.1.88-Eevee+Sprite.ipa'))
     p.add_argument('--core', type=Path, help='Replace EeveeSpotify.dylib with a newly built rootless native core')
     p.add_argument('--if-native', action='store_true', help='Pass upstream non-native builds through unchanged')
     a = p.parse_args()
@@ -40,6 +40,8 @@ def main():
         report = {'native_core': native, 'diagnostic_ui': False, 'device_tested': False,
                   'input': a.input.name, 'input_sha256': hashlib.sha256(a.input.read_bytes()).hexdigest()}
         if native:
+            if b'Sprite Download Manager' in core:
+                report.update({'manager_name': 'Sprite Download Manager', 'manager_version': '7.3', 'manager_language': 'en'})
             if b'@loader_path/.jbroot/usr/lib/libroothide.dylib' in core:
                 raise ValueError('RootHide is not a sideload core; use rootless')
             if any(n.endswith('/SpotifyAudioProbe.dylib') for n in z.namelist()):

@@ -1,8 +1,11 @@
-# Native Downloads v7.3 — preparation and packaging fixes
+# Sprite Download Manager 7.3
 
 Unofficial EeveeSpotifyReincarnated fork; implementation and builds by OpenAI
 Codex under Glongq's direction. Base Eevee 7 / guarded Spotify 9.1.88, iOS 16.1+.
 
+- Rename the manager to Sprite Download Manager, make its UI/status/error text
+  English-only, and show Version 7.3 in the settings footer.
+- Name IPA outputs `Spotify-9.1.88-Eevee+Sprite.ipa`.
 - Fix false readiness when quotas are raised but the quota guard or key-mode
   patch is absent. Preparation and read-only reports share the same checks.
 - Stop the manual download action with a clear error before submitting requests

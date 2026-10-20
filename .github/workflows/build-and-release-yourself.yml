@@ -139,7 +139,12 @@ jobs:
       - name: Prepare native downloads when the injected DEB contains them
         run: |
           python3 NativeDownloads/tools/prepare_ipa.py "$OUT_IPA" "${OUT_IPA%.ipa}-native.ipa" --if-native
-          mv "${OUT_IPA%.ipa}-native.ipa" "$OUT_IPA"
+          PREPARED="${OUT_IPA%.ipa}-native.ipa"
+          if python3 -c 'import json,sys; sys.exit(not json.load(open(sys.argv[1]))["native_core"])' "${OUT_IPA%.ipa}-native.build.json"; then
+            OUT_IPA="Outputs/IPAS/Spotify-9.1.88-Eevee+Sprite.ipa"
+            echo "OUT_IPA=$OUT_IPA" >> "$GITHUB_ENV"
+          fi
+          mv "$PREPARED" "$OUT_IPA"
 
       - name: Create Patched Duplicate & LC-inject zxPluginsInject
         run: |

@@ -1,4 +1,4 @@
-# Native downloads v7 — jailbreak packages
+# Sprite Download Manager 7.3 — jailbreak packages
 
 Preparation revision v7.3 of `spotify-ui-v7`, based on fork source commit
 `1e93d081d49cd0273c9493665b30b69994aea156`. Built with OpenAI Codex under
@@ -70,7 +70,7 @@ Outputs are in `NativeDownloads/outputs/jailbreak-v7.3/`.
 ## Device acceptance test still required
 
 Install the matching package using the jailbreak package manager, with Spotify
-9.1.88 already installed, and restart Spotify. Open EeveeSpotify → Track downloads.
+9.1.88 already installed, and restart Spotify. Open EeveeSpotify → Sprite Download Manager.
 Verify the runtime reports the supported image and key mode 0. Download a fresh
 album, wait for native completion, restart offline, then play and seek within
 previously unplayed tracks. Also verify normal playback, pause/resume, relaunch,

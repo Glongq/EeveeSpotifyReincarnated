@@ -138,6 +138,9 @@ jobs:
               | plutil -extract CFBundleShortVersionString raw - 2>/dev/null || echo "unknown")
           EEVEE_VERSION=$(grep -E '^Version:' control | awk '{print $2}')
           OUT="Outputs/IPAS/EeveeSpotify-${EEVEE_VERSION}-${SPOT_VERSION}.ipa"
+          if [ "$NATIVE_DOWNLOADS_JAILBREAK" = "1" ]; then
+            OUT="Outputs/IPAS/Spotify-${SPOT_VERSION}-Eevee+Sprite.ipa"
+          fi
 
           INJECT=("$DYLIB_SRC")
           [ -n "$FRAMEWORK_SRC" ] && INJECT+=("$FRAMEWORK_SRC")

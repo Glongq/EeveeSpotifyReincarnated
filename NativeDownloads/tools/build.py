@@ -104,7 +104,7 @@ def main():
         run("codesign", "--verify", "--strict", patched_eevee)
         run("xcrun", "dyld_info", "-validate_only", patched_eevee)
         manifest["offline_reminder_patch"] = reminder
-        archive = output / (provenance["release"] + ".ipa")
+        archive = output / provenance.get("ipa_filename", "Spotify-9.1.88-Eevee+Sprite.ipa")
         if archive.resolve() == source:
             raise RuntimeError("Output must differ from the input IPA")
         with ZipFile(archive, "w", allowZip64=True) as updated:

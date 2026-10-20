@@ -12,7 +12,7 @@
 
 ## Experimental Native Downloads
 
-**Current development revision:** `spotify-ui-v7.3` — correct native preparation/readiness checks and executable-patch verification for ordinary IPA packaging and jailbreak DEBs. Native queueing and persistence retain the v7 implementation. This revision has local validation only; it has not been verified on a real device. See [v7.3 changes](RELEASE_NOTES-native-v7.3.md). The publicly linked ready-made IPA below remains **v4**.
+**Current development revision:** **Sprite Download Manager 7.3** (`spotify-ui-v7.3`) — correct native preparation/readiness checks and executable-patch verification for ordinary IPA packaging and jailbreak DEBs. Native queueing and persistence retain the v7 implementation. The manager is English-only and shows Version 7.3 at the bottom of its settings page. This revision has local validation only; it has not been verified on a real device. See [v7.3 changes](RELEASE_NOTES-native-v7.3.md). The publicly linked ready-made IPA below remains **v4**.
 
 ### Verified v4 download baseline
 
@@ -32,7 +32,7 @@ The maintainer confirms that downloads and offline playback work through both Si
 ### Features and limitations
 
 - Download albums and playlists with Spotify's built-in Download action.
-- Use **EeveeSpotify → Track downloads** for current-track downloads and optional diagnostics.
+- Use **EeveeSpotify → Sprite Download Manager** for current-track downloads and optional diagnostics.
 - Play downloaded music offline in Spotify; no separate MP3/WAV export.
 - Diagnostics are off by default; some read requests may still time out.
 - Other Spotify binaries, long-term licence renewal and cellular-only downloading are **not verified**.
@@ -71,7 +71,7 @@ See the complete [build and installation guide](NativeDownloads/README.md), [tec
 > local tests and package validation only. SideStore/LiveContainer results do not
 > verify this jailbreak port.
 
-**[Download v7.3 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7.3-jailbreak)**
+**[Download Sprite 7.3 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/sprite-v7.3-jailbreak)**
 
 v7.3 fixes false native readiness, checks jailbreak writer availability and selects
 the exact Spotify image. Patching still runs once during offline-manager

@@ -1223,7 +1223,7 @@ NSString *SAPJournalSummaryForReport(NSDictionary *report) {
 }
 static NSString *tableText(NSDictionary *report) {
     NSMutableString *text = [NSMutableString string];
-    [text appendFormat:SAPL(@"SpotifyAudioProbe — состояние офлайн-загрузки, %@\n",@"SpotifyAudioProbe — offline download status, %@\n"), [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
+    [text appendFormat:@"%@ — offline download status, %@\n", SAPManagerName, [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
     [text appendString:SAPJournalSummaryForReport(report)];
     [text appendString:@"\n"];
     [text appendFormat:@"%-24s %-22s %5s %8s %6s %s\n", [SAPL(@"ТРЕК",@"TRACK") UTF8String], [SAPL(@"СОСТОЯНИЕ",@"STATE") UTF8String], "%", [SAPL(@"В СОСТ.",@"IN STATE") UTF8String], "UI", [SAPL(@"ПЕРЕХОДЫ",@"TRANSITIONS") UTF8String]];

@@ -1,6 +1,8 @@
-# Experimental Native Downloads — v7.3
+# Sprite Download Manager — 7.3
 
 This directory contains the native-download extension for this unofficial fork.
+The manager is English-only, named **Sprite Download Manager**, with **Version 7.3**
+in its settings footer. IPA outputs use `Spotify-9.1.88-Eevee+Sprite.ipa`.
 v7.3 fixes preparation/readiness checks for both the companion IPA overlay and
 unified jailbreak core. `ready` now requires the verified quota trampoline, key
 request mode 0 and target quotas. Unsupported or incompletely patched builds
@@ -22,7 +24,7 @@ only and have not yet been verified on a real iPhone or jailbreak.
 - Spotify: **9.1.88**, ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2`.
 - LiveContainer: installation, native downloads and offline playback verified by the maintainer on iPhone 15 Pro Max, iOS 27.0.1.
 - SideStore: installation, native downloads and offline playback also verified by the maintainer on the same device.
-- Languages: English and Russian, following the app language.
+- Manager language: English only.
 - WAV recording: **disabled in release builds**.
 
 Other Spotify binaries, iPads, long-term licence renewal and
@@ -55,7 +57,7 @@ python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.
 
 Outputs are in `NativeDownloads/outputs/`:
 
-- `spotify-ui-v7.3.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
+- `Spotify-9.1.88-Eevee+Sprite.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
 - `SpotifyAudioProbe.dylib`: the companion library.
 - `build-manifest.json`: input/output hashes, source hashes and patch details.
 
@@ -109,7 +111,7 @@ python3 NativeDownloads/tools/prepare_ipa.py injected.ipa prepared.ipa
 To build from an existing compatible Eevee base and a newly compiled unified core:
 
 ```sh
-python3 NativeDownloads/tools/prepare_ipa.py base.ipa spotify-v7.3.ipa --core /path/to/rootless/EeveeSpotify.dylib
+python3 NativeDownloads/tools/prepare_ipa.py base.ipa Spotify-9.1.88-Eevee+Sprite.ipa --core /path/to/rootless/EeveeSpotify.dylib
 ```
 
 This builder verifies both original guard windows or exact known prepared bytes,
@@ -123,7 +125,7 @@ engine; see [jailbreak packages](jailbreak/README.md).
 ## Use
 
 - Use Spotify's regular album or playlist Download button for native bulk downloads.
-- Open **EeveeSpotify → Track downloads** for the single-track action and status.
+- Open **EeveeSpotify → Sprite Download Manager** for the single-track action and status.
 - Enable diagnostics there when collecting a report. Diagnostics are off by default.
 - Downloads remain in Spotify's own offline storage. This release does not export
   MP3/WAV files and does not need to play every track before downloading it.

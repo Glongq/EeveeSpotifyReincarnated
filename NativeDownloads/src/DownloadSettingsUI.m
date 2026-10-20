@@ -220,7 +220,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 
 @interface SAPDownloadsSettings : SAPSettingsTable @end
 @implementation SAPDownloadsSettings
-- (void)viewDidLoad {[super viewDidLoad];self.title=SAPL(@"Загрузки треков",@"Track downloads");}
+- (void)viewDidLoad {[super viewDidLoad];self.title=SAPManagerName;}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 3;}
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
     if(section==0)return [self.snapshot[@"download_active"]boolValue]?3:2;
@@ -232,7 +232,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 }
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
     if(section==0)return SAPL(@"Треки сохраняются в Spotify для прослушивания без интернета.",@"Tracks are saved in Spotify for offline listening.");
-    if(section==2)return SAPL(@"Включай для сбора журналов и подробного отчёта. Скачивание и проверка текущего трека работают и при выключенной диагностике.",@"Enable to collect logs and detailed reports. Downloading and checking the current track also work with diagnostics off.");
+    if(section==2)return [NSString stringWithFormat:@"Enable to collect logs and detailed reports. Downloading and checking the current track also work with diagnostics off.\n\n%@ · Version %@",SAPManagerName,SAPManagerVersion];
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
@@ -299,17 +299,17 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 1;}
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {return 1;}
-- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {return SAPL(@"Загрузки треков",@"Track downloads");}
+- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {return SAPManagerName;}
 - (void)tableView:(UITableView *)table willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
     if([view isKindOfClass:UITableViewHeaderFooterView.class]) {
         UITableViewHeaderFooterView *header=(id)view;
-        header.textLabel.text=SAPL(@"Загрузки треков",@"Track downloads");
+        header.textLabel.text=SAPManagerName;
         header.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
         header.textLabel.textColor=UIColor.secondaryLabelColor;
     }
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
-    return SAPSettingsCell(table,SAPL(@"Управление загрузками",@"Manage downloads"),SAPL(@"Текущий трек и журнал загрузок",@"Current track and download log"),@"arrow.down.circle.fill",UIColor.systemGreenColor,YES);
+    return SAPSettingsCell(table,SAPManagerName,@"Current track and download log",@"arrow.down.circle.fill",UIColor.systemGreenColor,YES);
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {
     [table deselectRowAtIndexPath:index animated:YES];

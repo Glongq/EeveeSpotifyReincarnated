@@ -50,7 +50,7 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 
 ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
 before-package:: $(THEOS_STAGING_DIR)/DEBIAN/control
-	sed -i.bak -e 's/^Name:.*/Name: EeveeSpotify (Native Downloads)/' -e 's/^Maintainer:.*/Maintainer: Glongq/' -e 's/^Description:.*/Description: Unofficial EeveeSpotify fork with native downloads, UI v7. Codex-assisted build./' $(THEOS_STAGING_DIR)/DEBIAN/control
+	sed -i.bak -e 's/^Name:.*/Name: EeveeSpotify + Sprite Download Manager/' -e 's/^Maintainer:.*/Maintainer: Glongq/' -e 's/^Description:.*/Description: Unofficial EeveeSpotify fork with English-only Sprite Download Manager 7.3. Codex-assisted build./' $(THEOS_STAGING_DIR)/DEBIAN/control
 	rm -f $(THEOS_STAGING_DIR)/DEBIAN/control.bak
 	mkdir -p $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify
 	cp LICENSE $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify/COPYING

@@ -94,4 +94,4 @@ run(sys.executable, ROOT / "tools/test_native_restrictions.py")
 
 run("xcrun", "clang", "-fobjc-arc", "-Isrc", "src/Localization.m", "tests/localization.m", "-framework", "Foundation", "-o", build / "localization")
 run(build / "localization", "English", "-AppleLanguages", "(en-GB)")
-run(build / "localization", "Русский", "-AppleLanguages", "(ru-RU)")
+run(build / "localization", "English", "-AppleLanguages", "(ru-RU)")

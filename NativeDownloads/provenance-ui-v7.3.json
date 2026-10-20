@@ -12,16 +12,16 @@
     "src/AudioProbe.h": "3dcd78c3adc6261dd3608f49ff2c7bb932f9134f725d03c3da119c03e69f92c3",
     "src/AudioProbeBackend.h": "b0df01e1b86810f40986b85a9097eb22defa74010cde4eae8bfac3a9a4e77051",
     "src/AudioProbeUI.h": "e952d4ed02fc55eb29d3150b3436bf73870faeedee4f5860b3cc45e2c7590107",
-    "src/AudioProbeUI.m": "1b9cd2fd6f51051e462acd5f5276cc39f0a5dc0e0a1b1b730881be90b641b3b6",
+    "src/AudioProbeUI.m": "cc3e6069ca13a23343f131725f0f56e8d81d1d612dc82c00e7ca75bb26736eac",
     "src/CaptureRing.c": "4819af9416ca6393972de1f18ad89a960a0025bdcd0cc221e5d2f1c24c817c54",
     "src/CaptureRing.h": "69bed8a419e4e6d499d0c895b62c98d08c04ad140dbee90375d67f571d81a6bf",
     "src/Deadline.h": "78a494eb12b720ab82092f19a14c8a72e8bcbbf6238796c31fd1a6e3c428368e",
     "src/Diagnostics.h": "2d69b150261f7b5ffcb7ad02032c145fd301ed991a6412c9d215f5aefea0f012",
     "src/Diagnostics.m": "d605494d313c93234d92231fb834474e736111734d7ce9d435e35abeadc8c203",
-    "src/DownloadSettingsUI.m": "258b36d9ac50a97d89289a21da211280fb09c209b314436f9e927e5ed8a9a7c5",
+    "src/DownloadSettingsUI.m": "be915509254d7874519f77d10be27f2b36e8e60adda99d50892bb3ddeb542983",
     "src/Features.h": "49a26dfbbe3dc8a0b4c6ddd28384a748ed7f3e4fb52f0b6e9536d70a6734d4f0",
-    "src/Localization.h": "578f52421622fd0011da3883b6c7425822375bdf4c4468135a7618a87bea6692",
-    "src/Localization.m": "4d2759fe5424c062ffdf45b1fcdb4b44e811eedca3fc79295a5e6b1faa42efe4",
+    "src/Localization.h": "8a6caf44aff8f08aedeca7e5a582a02b6a4fa93b20e0a8b6d8eca3f30d031fd2",
+    "src/Localization.m": "44f9098541cd32b111c812cd94bffcb9fe838a49fcf28ca2e41966639ef89f12",
     "src/NativeErrorLog.h": "9a37cb0c32173cf8663e79cb488d0a31b3f7ad9fbac23aec472278c3fcb541c8",
     "src/NativeErrorLog.m": "6aedf51a83ced4c236d54e8560a55ce1318c45664fe9db6a6fe54a0c09905b0b",
     "src/NativeOffline.h": "46a28ddb313002d91fdfcbad6820c653723313382ca213c75efc2fe8dbed6bc4",
@@ -40,7 +40,7 @@
     "src/TrackDownload.h": "15be380ced1416b840bc58b1c6bfab11abdb4c1562306c552726840a080b1566",
     "src/TrackDownload.m": "a27b2e30b4d224eec62a644181c16a3b4fedf33ade77966b8b31448f0a9d78ca",
     "src/TrackJournal.h": "9c0084229923e3a8ff3a3fcd970a51b68078a4ede11095d03d28776e9ff3993e",
-    "src/TrackJournal.m": "3ef1bd12a78281a4c20298a3ce9d5aa1fa51ac1b4606d8d4924707e4d98d0acc",
+    "src/TrackJournal.m": "dfdeb28cd61e97cc5df07e19c709a59a59cf036edbe9969cf3142e2961392779",
     "src/WireProto.h": "5ea2d8a722c1ac33d25f1baf054cb59eacf9a55d18fb2ed4ff3799b490cf4766",
     "src/WireProto.m": "48d328cde0552b601fde3d423e8c777f056ddd9d31017d3a5f416b95eba19c28"
   },
@@ -64,6 +64,11 @@
   ],
   "changes": [
     "Require verified executable patches as well as quotas before reporting native readiness",
-    "Reject manual download preparation when executable patches are absent; preserve native queue and scheduling"
-  ]
+    "Reject manual download preparation when executable patches are absent; preserve native queue and scheduling",
+    "English-only Sprite Download Manager with Version 7.3 footer; native download scheduling unchanged"
+  ],
+  "manager_name": "Sprite Download Manager",
+  "manager_version": "7.3",
+  "manager_language": "en",
+  "ipa_filename": "Spotify-9.1.88-Eevee+Sprite.ipa"
 }

@@ -68,5 +68,5 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           path: |
-            NativeDownloads/outputs/spotify-ui-v7.3.ipa
+            NativeDownloads/outputs/Spotify-9.1.88-Eevee+Sprite.ipa
             NativeDownloads/outputs/build-manifest.json

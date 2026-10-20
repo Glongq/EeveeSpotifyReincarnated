@@ -33,6 +33,9 @@ SPOT_VERSION=$(unzip -p "$VANILLA_IPA" 'Payload/Spotify.app/Info.plist' \
     | plutil -extract CFBundleShortVersionString raw - 2>/dev/null || echo "unknown")
 OUT_DIR="Outputs/IPAS"
 OUT_IPA="$OUT_DIR/EeveeSpotify-${VERSION}-${SPOT_VERSION}.ipa"
+if [ "${NATIVE_DOWNLOADS:-1}" = "1" ]; then
+    OUT_IPA="$OUT_DIR/Spotify-${SPOT_VERSION}-Eevee+Sprite.ipa"
+fi
 mkdir -p "$OUT_DIR"
 
 color() { printf '\033[1;32m==> %s\033[0m\n' "$*"; }

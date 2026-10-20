@@ -1,6 +1,8 @@
 #pragma once
 #import <Foundation/Foundation.h>
 
-// Follows the app's preferred language (including the iOS per-app language).
-// Evaluated once per process, never from the real-time audio callback.
-NSString *SAPL(NSString *russian,NSString *english);
+// Sprite uses English regardless of Spotify's or iOS's selected language.
+// Discard the legacy translation before compilation, including its string data.
+#define SAPL(legacyTranslation, english) (english)
+#define SAPManagerName @"Sprite Download Manager"
+#define SAPManagerVersion @"7.3"
