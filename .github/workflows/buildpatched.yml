@@ -12,6 +12,10 @@ on:
         default: ""
         required: false
         type: string
+      native_downloads:
+        description: "Include native downloads (requires the guarded Spotify 9.1.88 binary, iOS 16.1+)"
+        type: boolean
+        default: true
       upload_method:
         description: "Where to upload the built IPA"
         default: "artifacts"
@@ -25,6 +29,8 @@ on:
 env:
   THEOS: ${{ github.workspace }}/theos
   SWIFTPROTOBUF_VERSION: "1.29.0"
+  NATIVE_DOWNLOADS_JAILBREAK: ${{ inputs.native_downloads && '1' || '0' }}
+  DEPLOY_TARGET: "16.1"
 
 jobs:
   build:
@@ -185,6 +191,12 @@ jobs:
         run: |
           chmod +x Tools/alt-icons.sh
           Tools/alt-icons.sh "$OUT_IPA"
+
+      - name: Prepare and verify native executable patches before signing
+        if: ${{ inputs.ipa_url != '' && inputs.native_downloads }}
+        run: |
+          python3 NativeDownloads/tools/prepare_ipa.py "$OUT_IPA" "${OUT_IPA%.ipa}-native.ipa"
+          mv "${OUT_IPA%.ipa}-native.ipa" "$OUT_IPA"
 
       - name: Upload IPA artifact
         if: ${{ inputs.ipa_url != '' && (inputs.upload_method == 'artifacts' || inputs.upload_method == 'both') }}

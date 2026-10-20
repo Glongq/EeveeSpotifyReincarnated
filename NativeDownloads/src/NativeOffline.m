@@ -2,6 +2,7 @@
 #import "NativeOffline.h"
 #import "NativeRestrictionsPatch.h"
 #import "OfflineLimits.h"
+#import "NativeReadiness.h"
 #import "TrackJournal.h"
 #import "Diagnostics.h"
 #import <UIKit/UIKit.h>
@@ -256,6 +257,11 @@ void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOO
         void *manager=NULL;uintptr_t image=0;NSMutableDictionary *before=[NSMutableDictionary dictionary];
         // The app's invalidate method clears wrapper+8. Read it only on its queue.
         if(!nativeState(wrapper,&manager,&image,before)) { [operation finish:NO reason:SAPL(@"Нативный менеджер завершён или сборка Spotify не совпадает с проверенной 9.1.88.",@"The native manager has shut down, or this Spotify build does not match the verified 9.1.88.") report:nil];return; }
+        SAPNativeReadiness(before,YES);
+        if(![before[@"executable_patches_ready"] boolValue]) {
+            [operation finish:NO reason:SAPL(@"В этой сборке Spotify отсутствуют необходимые патчи загрузки. Для sideload установи подготовленную IPA; на jailbreak проверь совместимость сборки и загрузку твика.",@"This Spotify build is missing the required download patches. For sideloading, install the prepared IPA; on jailbreak, check the supported build and tweak loading.") report:@{@"before":before,@"changed":@NO,@"failure":@"native_patches_missing",@"native_queue":@YES}];
+            return;
+        }
         // v16: previously only raised the quota when it was exactly (0,0) — the
         // "never synced" sentinel. A real account can sync a small nonzero limit
         // (this is what capped the user's playlist download after a handful of
@@ -270,7 +276,8 @@ void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOO
             ((void(*)(void *,int32_t,int32_t,int32_t,int32_t,int32_t))(image+0x1f94658))(manager,newDuration,newTrackLimit,[before[@"episode_duration_seconds"] intValue],[before[@"episode_limit"] intValue],[before[@"abp_duration_seconds"] intValue]);
         }
         NSMutableDictionary *after=[NSMutableDictionary dictionary];
-        BOOL ready=nativeState(wrapper,&manager,&image,after)&&[after[@"music_limit"] intValue]>=desiredTrackLimit&&[after[@"music_duration_seconds"] longLongValue]>=desiredDurationSeconds;
+        BOOL valid=nativeState(wrapper,&manager,&image,after);
+        BOOL ready=SAPNativeReadiness(after,valid);
         [operation finish:ready reason:ready?SAPL(@"Нативный менеджер подготовлен",@"Native download manager ready"):SAPL(@"Нативный менеджер не подтвердил разрешение музыкальной загрузки.",@"The native manager did not confirm permission to download music.") report:@{@"before":before,@"after":after,@"changed":@(changed),@"native_queue":@YES}];
     });
 }
@@ -295,8 +302,8 @@ void SAPSampleNativeOffline(void) {
     if(![scheduler respondsToSelector:post])return;
     ((void(*)(id,SEL,id))objc_msgSend)(scheduler,post,^{
         void *manager=NULL;uintptr_t image=0;NSMutableDictionary *value=[NSMutableDictionary dictionary];
-        BOOL valid=nativeState(wrapper,&manager,&image,value);value[@"valid"]=@(valid);
-        value[@"ready"]=@(valid && [value[@"music_limit"] intValue]>0 && [value[@"music_duration_seconds"] longLongValue]>0);
+        BOOL valid=nativeState(wrapper,&manager,&image,value);
+        SAPNativeReadiness(value,valid);
         value[@"reason"]=@"read-only sample on native queue";
         SAPJournalNoteQuota(value);
     });

@@ -3,6 +3,10 @@ name: Build rootless + RootHide .debs + Draft Release
 on:
   workflow_dispatch:
     inputs:
+      native_downloads:
+        description: "Include native downloads (guarded Spotify 9.1.88, jailbreak only, unverified on device)"
+        type: boolean
+        default: true
       tag:
         description: "Git tag to create/use for the draft release (e.g. v6.6.3.1)"
         required: true
@@ -20,6 +24,8 @@ on:
 
 env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
+  NATIVE_DOWNLOADS_JAILBREAK: ${{ inputs.native_downloads && '1' || '0' }}
+  DEPLOY_TARGET: "16.1"
 
 jobs:
   build-debs:
@@ -94,6 +100,12 @@ jobs:
           "$RUNNER_TEMP/custom-tabs-activation-tests"
           python3 Tests/ResolveConfigurationSnapshot/test.py
 
+      - name: Validate native patch guards and readiness
+        if: ${{ inputs.native_downloads }}
+        run: |
+          python3 NativeDownloads/tools/test_patchers.py
+          bash NativeDownloads/jailbreak/test.sh
+
       - name: Build ${{ matrix.label }} .deb
         env:
           REPO_SLUG: ${{ github.repository }}
@@ -144,6 +156,12 @@ jobs:
           if [ "${{ matrix.scheme }}" = "roothide" ]; then
             [ "$(dpkg-deb -f "$DEB_PATH" Architecture)" = "iphoneos-arm64e" ]
           fi
+
+      - name: Verify native package
+        if: ${{ inputs.native_downloads }}
+        run: |
+          DEB_PATH="$(find Outputs/DEBS -name '*.deb' -type f | head -n 1)"
+          python3 NativeDownloads/jailbreak/verify_deb.py "$DEB_PATH" "${{ matrix.scheme }}"
 
       - name: Upload ${{ matrix.label }} artifact
         uses: actions/upload-artifact@v4

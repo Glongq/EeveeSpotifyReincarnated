@@ -136,13 +136,18 @@ jobs:
           zip -qry "$(basename "$OUT_IPA")" Payload
           rm -rf Payload
 
+      - name: Prepare native downloads when the injected DEB contains them
+        run: |
+          python3 NativeDownloads/tools/prepare_ipa.py "$OUT_IPA" "${OUT_IPA%.ipa}-native.ipa" --if-native
+          mv "${OUT_IPA%.ipa}-native.ipa" "$OUT_IPA"
+
       - name: Create Patched Duplicate & LC-inject zxPluginsInject
         run: |
           PATCHED_OUT="${OUT_IPA%.ipa}-patched.ipa"
           cp "$OUT_IPA" "$PATCHED_OUT"
           ipapatch --input "$PATCHED_OUT" --inplace --noconfirm \
                    --dylib packages/zxPluginsInject.dylib
-          echo "PATCHED_IPA=$PATCHED_OUT" >> $GITHUB_ENV
+          echo "PATCHED_OUT=$PATCHED_OUT" >> $GITHUB_ENV
 
       - name: Stage alternate app icons
         run: |

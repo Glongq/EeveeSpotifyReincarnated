@@ -1,6 +1,6 @@
 # Native downloads v7 — jailbreak packages
 
-Lifecycle revision v7.2 of `spotify-ui-v7`, based on fork source commit
+Preparation revision v7.3 of `spotify-ui-v7`, based on fork source commit
 `1e93d081d49cd0273c9493665b30b69994aea156`. Built with OpenAI Codex under
 Glongq's direction. This is an unofficial fork of EeveeSpotifyReincarnated.
 
@@ -24,15 +24,17 @@ Glongq's direction. This is an unofficial fork of EeveeSpotifyReincarnated.
 
 ## What changes from the IPA build
 
-The existing `NativeDownloads/src` files remain byte-for-byte v7. The downloader,
-UI, native queue, callbacks, cache and persistence use the same implementations.
-WAV capture stays disabled, as in the v7 release.
+The native queue, transport, callbacks, UI, cache and persistence retain their v7
+implementations. The shared preparation check now requires both verified code
+patches and the target quotas. Quotas alone no longer produce `ready=true`.
+The read-only sampler uses the same rule. WAV capture stays disabled.
 
 The IPA applied two guarded executable patches before signing. Jailbreak loading
 applies the same bytes to the **mapped process image** through `MSHookMemory`:
 
-1. During library loading, validate the exact UUID, instructions and initializer
-   signature and register one offline-manager initializer hook. No executable
+1. During library loading, validate the exact UUID, instructions, writer capability
+   (unless already statically prepared), and initializer signature, then register
+   one offline-manager initializer hook. No executable
    memory or AudioToolbox import writes occur during this preflight.
 2. On the first native offline-manager construction, before forwarding its init,
    install the existing quota trampoline/entry branch and key mode 0. Arguments
@@ -63,7 +65,7 @@ The script builds the renamed EeveeSwiftProtobuf dependency if absent, verifies
 v7 provenance, tests runtime guards/rollback, builds both packages, then checks
 package paths, injection filter, native symbols, dependencies, signatures and
 minimum deployment targets. It does not push, tag, or create a release.
-Outputs are in `NativeDownloads/outputs/jailbreak-v7.2/`.
+Outputs are in `NativeDownloads/outputs/jailbreak-v7.3/`.
 
 ## Device acceptance test still required
 
@@ -78,11 +80,26 @@ Do not label this port device-verified until those checks pass on a real
 jailbroken device. An unsupported Spotify image should remain unchanged and log
 an inactive adapter rather than trying nearby offsets.
 
-## v7.2 validation status
+## v7.3 validation status
 
 This release contains jailbreak DEBs only. Install through the jailbreak package
-manager; converting a DEB into an IPA is not a supported installation path.
+manager; copying its libraries into an IPA alone does not prepare native downloads. For
+sideloading, use the documented `NativeDownloads/tools/prepare_ipa.py` build step
+before installation signing; this is separate from installing the DEB on jailbreak.
 
 The startup path was changed after reported v7.1 launch failures. The remote
 crash has not been reproduced locally or confirmed resolved on the affected
-device. v7.2 remains an unverified pre-release.
+device. v7.3 remains an unverified pre-release.
+
+## v7.3 readiness correction
+
+The shared report exposes `quota_ready`, `executable_patches_ready`, and `ready`.
+`ready` requires all three: supported live manager, both verified code patches,
+and target quotas. The earlier combination of elevated quotas + untouched key
+mode 1 now reports false. Missing/unknown key mode is also false. The manual
+button returns a specific missing-patches error without sending `AddDownload`.
+No new timers, scanning, background writers or key retries were added.
+
+The adapter does not take over the download reminder when required patches are
+missing and no external jailbreak writer is available. A fully prepared IPA
+requires no executable writer and causes zero executable-memory writes.

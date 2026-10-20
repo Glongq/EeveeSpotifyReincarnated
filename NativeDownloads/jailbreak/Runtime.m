@@ -1,4 +1,4 @@
-// Jailbreak adapter for v7. The native downloader sources are unchanged.
+// Native downloads adapter: guarded jailbreak writes or a statically prepared IPA.
 // Only the exact Spotify build used by v7 is supported; never scan for opcodes.
 #import <Foundation/Foundation.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -24,27 +24,36 @@ extern const struct mach_header_64 *JBTestHeader;
 extern BOOL JBTestWrite(void *,const void *,size_t);
 #endif
 
+// A bundled Substrate compatibility symbol is not permission to modify signed
+// executable pages on stock iOS. Check capability before taking over downloads.
+#ifndef SAP_JB_TEST
+static void (*executableWriter(void))(void *,const void *,size_t) {
+    void (*writer)(void *,const void *,size_t)=dlsym(RTLD_DEFAULT,"MSHookMemory");
+    Dl_info engine={0};
+    if(!writer || !dladdr((void *)writer,&engine) || !engine.dli_fname)return NULL;
+    NSString *path=[[@(engine.dli_fname) stringByResolvingSymlinksInPath] stringByStandardizingPath];
+    NSString *appRoot=[[NSBundle.mainBundle.bundlePath stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
+    // Reject a compatibility writer from any app bundle, including the LC host.
+    return ([path hasPrefix:appRoot] || [path rangeOfString:@".app/"].location!=NSNotFound)?NULL:writer;
+}
+#endif
+static BOOL canWriteExecutable(void) {
+#ifdef SAP_JB_TEST
+    extern BOOL JBTestWriterAvailable;
+    return JBTestWriterAvailable;
+#else
+    return executableWriter()!=NULL;
+#endif
+}
+
 // The injection engine owns executable-page remapping. No permanent RWX pages.
 static BOOL writeCode(void *target, const void *data, size_t size) {
 #ifdef SAP_JB_TEST
-    return JBTestWrite(target,data,size);
+    return canWriteExecutable() && JBTestWrite(target,data,size);
 #else
-    void (*hookMemory)(void *,const void *,size_t)=dlsym(RTLD_DEFAULT,"MSHookMemory");
-    if (!hookMemory) {
-        NSLog(@"[EeveeSpotify][NativeDownloads] MSHookMemory unavailable; leaving Spotify unchanged");
-        return NO;
-    }
-    // A sideloaded IPA may bundle the same symbol without permission to patch
-    // signed executable pages. Presence of MSHookMemory is not a capability check.
-    Dl_info engine={0};
-    if(!dladdr((void *)hookMemory,&engine) || !engine.dli_fname) return NO;
-    NSString *enginePath=[[@(engine.dli_fname) stringByResolvingSymlinksInPath] stringByStandardizingPath];
-    NSString *appRoot=[[NSBundle.mainBundle.bundlePath stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
-    if([enginePath hasPrefix:appRoot]) {
-        NSLog(@"[EeveeSpotify][NativeDownloads] Refusing app-bundled executable writer; use the statically patched IPA");
-        return NO;
-    }
-    hookMemory(target,data,size);
+    void (*writer)(void *,const void *,size_t)=executableWriter();
+    if(!writer)return NO;
+    writer(target,data,size);
     sys_icache_invalidate(target,size);
     return bytes(target,data,size);
 #endif
@@ -76,11 +85,39 @@ static void installAudioImports(const struct mach_header_64 *header, intptr_t sl
 }
 #endif
 
+static BOOL spotifyIdentity(const struct mach_header_64 *h) {
+    if(!h || h->magic!=MH_MAGIC_64 || h->cputype!=CPU_TYPE_ARM64 ||
+       h->ncmds>4096 || h->sizeofcmds>1024*1024)return NO;
+    uintptr_t cursor=sizeof(*h),end=cursor+h->sizeofcmds;
+    BOOL matches=NO;
+    for(uint32_t j=0;j<h->ncmds;j++) {
+        if(cursor+sizeof(struct load_command)>end)return NO;
+        const struct load_command *lc=(const void *)((const uint8_t *)h+cursor);
+        if(lc->cmdsize<sizeof(*lc) || cursor+lc->cmdsize>end)return NO;
+        if(lc->cmd==LC_UUID && lc->cmdsize==sizeof(struct uuid_command))
+            matches=bytes(((const struct uuid_command *)lc)->uuid,JB_UUID,sizeof(JB_UUID));
+        cursor+=lc->cmdsize;
+    }
+    return cursor==end && matches;
+}
+#ifndef SAP_JB_TEST
+static const struct mach_header_64 *spotifyImage(void) {
+    // LiveContainer can keep its host at dyld index 0. Select Spotify by its
+    // exact Mach-O identity, never by offsets into the host or by opcode scans.
+    uint32_t count=_dyld_image_count();
+    for(uint32_t i=0;i<count;i++) {
+        const struct mach_header_64 *h=(const void *)_dyld_get_image_header(i);
+        if(spotifyIdentity(h))return h;
+    }
+    return NULL;
+}
+#endif
+
 static BOOL prepare(BOOL apply) {
 #ifdef SAP_JB_TEST
     const struct mach_header_64 *header=JBTestHeader;
 #else
-    const struct mach_header_64 *header=(const void *)_dyld_get_image_header(0);
+    const struct mach_header_64 *header=spotifyImage();
 #endif
     if(!header || header->magic!=MH_MAGIC_64 || header->cputype!=CPU_TYPE_ARM64 ||
        header->sizeofcmds>1024*1024 || header->ncmds>4096) return NO;
@@ -123,6 +160,10 @@ static BOOL prepare(BOOL apply) {
        (!setterPatched && !bytes(setter,JB_SetterOriginal,4)) ||
        (setterPatched ? !bytes(cave,JB_Trampoline,sizeof(JB_Trampoline)) :
          !bytes(cave,zero,sizeof(zero)))) return NO;
+    if((!setterPatched || !keyPatched) && !canWriteExecutable()) {
+        NSLog(@"[EeveeSpotify][NativeDownloads] Required executable patches missing and no jailbreak writer available; use a prepared IPA for sideloading");
+        return NO;
+    }
     if(!apply) return YES; // Read-only preflight during dylib initialization.
     // Preflight every guard before changing anything. Cave first, branch second.
     if(!setterPatched) {
@@ -142,7 +183,7 @@ static BOOL prepare(BOOL apply) {
         return NO;
     }
 #ifndef SAP_JB_TEST
-    installAudioImports(header,_dyld_get_image_vmaddr_slide(0));
+    installAudioImports(header,(intptr_t)((uintptr_t)header-UINT64_C(0x100000000)));
 #endif
     return YES;
 }
@@ -154,7 +195,7 @@ static void activateForManager(void) {
     dispatch_once(&once, ^{
         BOOL installed=install();
         atomic_store_explicit(&ready,installed,memory_order_release);
-        NSLog(@"[EeveeSpotify][NativeDownloads] v7 jailbreak adapter %@ at offline-manager initialization",installed?@"ready":@"inactive");
+        NSLog(@"[EeveeSpotify][NativeDownloads] v7.3 jailbreak adapter %@ at offline-manager initialization",installed?@"ready":@"inactive");
     });
 }
 

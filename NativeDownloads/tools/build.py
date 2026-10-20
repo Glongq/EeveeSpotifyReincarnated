@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build the UI release and native-download overlay for the guarded Spotify 9.1.88 binary.")
     parser.add_argument("ipa", type=Path, help="An unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 IPA supplied by you")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT)
-    parser.add_argument("--provenance", type=Path, default=ROOT / "provenance-ui-v7.json")
+    parser.add_argument("--provenance", type=Path, default=ROOT / "provenance-ui-v7.3.json")
     parser.add_argument("--eevee-dylib", type=Path, help="EeveeSpotify.dylib compiled from the current UI sources; otherwise use the input IPA's Eevee library")
     args = parser.parse_args()
     source = args.ipa.expanduser().resolve()
@@ -53,6 +53,8 @@ def main():
         patch_key_request_mode(patch_native_restrictions(check.read(f"{app}/{info['CFBundleExecutable']}"))[0])
         if eevee_input is None:
             eevee_input = check.read(f"{app}/Frameworks/EeveeSpotify.dylib")
+        if b'EeveeNativeDownloadsWillHandleDownloads' in eevee_input:
+            raise RuntimeError("This Eevee library already contains the native backend. Use NativeDownloads/tools/prepare_ipa.py instead of adding a second backend.")
         for marker in provenance.get("eevee_required_markers", []):
             if marker.encode() not in eevee_input:
                 raise RuntimeError("The Eevee library lacks the new UI. Rebuild Eevee and pass --eevee-dylib /path/to/EeveeSpotify.dylib")

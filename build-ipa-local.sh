@@ -42,7 +42,7 @@ chmod +x Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
 Tools/SwiftProtobufBuild/build-eeveeswiftprotobuf.sh
 
 color "2/7  theos make package"
-THEOS_PACKAGE_SCHEME=rootless make package FINALPACKAGE=1
+THEOS_PACKAGE_SCHEME=rootless make package FINALPACKAGE=1 NATIVE_DOWNLOADS_JAILBREAK="${NATIVE_DOWNLOADS:-1}"
 DEB_FILE=$(ls -t packages/com.eevee.spotify_*.deb 2>/dev/null | head -1)
 [ -n "$DEB_FILE" ] || { echo "deb not produced"; exit 1; }
 
@@ -89,10 +89,10 @@ color "7/7  stage alternate app icons"
 chmod +x Tools/alt-icons.sh
 Tools/alt-icons.sh "$OUT_IPA"
 
-if [ "${NATIVE_DOWNLOADS:-0}" = "1" ]; then
-    color "Native Downloads overlay (exact guarded Spotify build required)"
-    python3 "$REPO_DIR/NativeDownloads/tools/build.py" "$REPO_DIR/$OUT_IPA"
-    echo "Native Downloads output: $REPO_DIR/NativeDownloads/outputs/spotify-ui-v7.ipa"
+if [ "${NATIVE_DOWNLOADS:-1}" = "1" ]; then
+    color "Verify native executable patches before installation signing"
+    python3 "$REPO_DIR/NativeDownloads/tools/prepare_ipa.py" "$OUT_IPA" "${OUT_IPA%.ipa}-native.ipa"
+    mv "${OUT_IPA%.ipa}-native.ipa" "$OUT_IPA"
 fi
 
 color "Done"

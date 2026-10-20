@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import patch_key_request_mode as keys
 import patch_native_restrictions as restrictions
 import patch_offline as reminder
+from prepare_executable import prepare
 
 
 def macho(segments, size):
@@ -46,15 +47,26 @@ class ProvenanceTests(unittest.TestCase):
         self.assertFalse(provenance['wav_capture_enabled'])
         expected = provenance['source_sha256_by_file']
         actual_names = {'src/' + p.name for p in (ROOT / 'src').iterdir() if p.is_file()}
-        self.assertEqual(actual_names, set(expected))
+        self.assertEqual(actual_names, set(expected) | {'src/NativeReadiness.h'})
         for name, digest in expected.items():
             with self.subTest(file=name):
-                self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+                if name != 'src/NativeOffline.m':
+                    self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
                 if name != 'src/DownloadSettingsUI.m':
                     self.assertEqual(digest, previous['source_sha256_by_file'][name])
         for name, digest in provenance['eevee_source_sha256_by_file'].items():
             with self.subTest(file=name):
                 self.assertEqual(hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest(), digest)
+
+    def test_v73_changes_are_limited_to_readiness(self):
+        previous = json.loads((ROOT / 'provenance-ui-v7.json').read_text())
+        current = json.loads((ROOT / 'provenance-ui-v7.3.json').read_text())
+        expected = current['source_sha256_by_file']
+        self.assertEqual({'src/' + f.name for f in (ROOT / 'src').iterdir() if f.is_file()}, set(expected))
+        for name, digest in expected.items():
+            self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+            if name not in ('src/NativeOffline.m', 'src/NativeReadiness.h'):
+                self.assertEqual(digest, previous['source_sha256_by_file'][name])
 
     def test_generated_headers(self):
         self.assertEqual((ROOT / 'src/NativeRestrictionsPatch.h').read_text(), restrictions.guard_header())
@@ -63,6 +75,36 @@ class ProvenanceTests(unittest.TestCase):
     def test_python_sources_compile(self):
         for path in (ROOT / 'tools').glob('*.py'):
             compile(path.read_text(), str(path), 'exec')
+
+
+class PreparedExecutableTests(unittest.TestCase):
+    def test_original_partial_complete_and_unknown_code(self):
+        # Sparse fixture with the real virtual-address layout, no Spotify binary.
+        data = bytearray(macho([(restrictions.PREFERRED, 0, keys.MAPPING - restrictions.PREFERRED + 4096)], keys.MAPPING - restrictions.PREFERRED + 4096))
+        for address, code in [(restrictions.SETTER, restrictions.ORIGINAL),
+                              (keys.WINDOW, keys.ORIGINAL), (keys.PROVIDER, keys.PROVIDER_HEAD),
+                              (keys.MAPPING, keys.MAPPING_BYTES)]:
+            at = address - restrictions.PREFERRED
+            data[at:at + len(code)] = code
+        original = bytes(data)
+        del data
+        complete, report = prepare(original)
+        self.assertTrue(report['executable_patches_ready'])
+        self.assertEqual(prepare(complete)[0], complete)
+        quota_only = restrictions.patch(original)[0]
+        self.assertEqual(prepare(quota_only)[0], complete)
+        del quota_only
+        key_only = keys.patch(original)[0]
+        self.assertEqual(prepare(key_only)[0], complete)
+        del key_only, original
+        broken = bytearray(complete)
+        broken[restrictions.CAVE - restrictions.PREFERRED] ^= 1
+        with self.assertRaises(ValueError):
+            prepare(bytes(broken))
+        broken = bytearray(complete)
+        broken[keys.PROVIDER - restrictions.PREFERRED] ^= 1
+        with self.assertRaises(ValueError):
+            prepare(bytes(broken))
 
 
 class KeyPatchTests(unittest.TestCase):

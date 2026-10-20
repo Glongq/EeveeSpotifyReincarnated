@@ -64,9 +64,9 @@ jobs:
           python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa" "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
-          name: spotify-ui-v7-native-downloads
+          name: spotify-ui-v7.3-native-downloads
           if-no-files-found: error
           retention-days: 7
           path: |
-            NativeDownloads/outputs/spotify-ui-v7.ipa
+            NativeDownloads/outputs/spotify-ui-v7.3.ipa
             NativeDownloads/outputs/build-manifest.json

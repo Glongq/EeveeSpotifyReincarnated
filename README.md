@@ -12,7 +12,7 @@
 
 ## Experimental Native Downloads
 
-**Current source revision:** `spotify-ui-v7` — glass download controls and header-layout updates, plus removal of the manual mute row. The native-download backend remains the recorded v4 implementation. This is a source update; the ready-made IPA linked below remains **v4**.
+**Current development revision:** `spotify-ui-v7.3` — correct native preparation/readiness checks and executable-patch verification for ordinary IPA packaging and jailbreak DEBs. Native queueing and persistence retain the v7 implementation. This revision has local validation only; it has not been verified on a real device. See [v7.3 changes](RELEASE_NOTES-native-v7.3.md). The publicly linked ready-made IPA below remains **v4**.
 
 ### Verified v4 download baseline
 
@@ -62,20 +62,21 @@ python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.
 
 Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA](https://github.com/Glongq/EeveeSpotifyReincarnated/actions/workflows/native-downloads.yml): run the workflow manually with a direct HTTPS URL to your compatible base IPA. For v7 UI builds from an original base IPA, also supply `eevee_dylib_url` pointing to a library built from the current sources. The workflow does not compile Theos itself. The built IPA and manifest are uploaded as **temporary Actions artifacts**. A green validation result alone does **not** mean an IPA was built; the build job runs only when the IPA URL is supplied.
 
-See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7 source hashes](NativeDownloads/provenance-ui-v7.json).
+See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7.3 source hashes](NativeDownloads/provenance-ui-v7.3.json).
 
-### Jailbreak packages — v7.2 development port
+### Jailbreak packages — v7.3 development port
 
 > [!WARNING]
 > **NOT TESTED ON A REAL JAILBROKEN DEVICE.** These experimental packages passed
 > local tests and package validation only. SideStore/LiveContainer results do not
 > verify this jailbreak port.
 
-**[Download v7.2 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7.2-jailbreak)**
+**[Download v7.3 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v7.3-jailbreak)**
 
-v7.2 moves executable patching out of library initialization and into the first
-native offline-manager construction. Previous launch failures have **not** been
-confirmed resolved on the affected device. This pre-release contains DEBs only.
+v7.3 fixes false native readiness, checks jailbreak writer availability and selects
+the exact Spotify image. Patching still runs once during offline-manager
+construction. Previous launch failures have **not** been confirmed resolved on the
+affected device. This pre-release contains DEBs only.
 
 The [local jailbreak build guide](NativeDownloads/jailbreak/README.md) builds
 complete rootless and RootHide packages including the native downloader and v7

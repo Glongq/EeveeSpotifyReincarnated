@@ -24,7 +24,8 @@ EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
 EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
 
-# Opt in explicitly: the IPA overlay still uses its original, frozen v7 sources.
+# Native builds share readiness checks. IPA packaging applies executable patches
+# before signing; jailbreak loading uses the guarded runtime adapter.
 ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
 EeveeSpotify_FILES += $(wildcard NativeDownloads/src/*.m NativeDownloads/src/*.c) NativeDownloads/jailbreak/Runtime.m modules/fishhook/fishhook.c
 EeveeSpotify_CFLAGS += -INativeDownloads/src -Imodules/fishhook -DSAP_ENABLE_WAV_CAPTURE=0

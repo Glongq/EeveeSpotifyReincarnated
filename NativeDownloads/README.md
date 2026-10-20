@@ -1,17 +1,22 @@
-# Experimental Native Downloads — UI release v7
+# Experimental Native Downloads — v7.3
 
-This directory contains the native-download extension used in `spotify-ui-v7`.
-It is an independently built companion library for EeveeSpotifyReincarnated.
-The download runtime is unchanged from v4. The settings UI removes the manual
-mute action. `provenance.json` preserves the v4 hashes; `provenance-ui-v7.json`
-records the current UI sources and the unchanged download backend.
-The packaging and test scripts have been adapted for this repository.
+This directory contains the native-download extension for this unofficial fork.
+v7.3 fixes preparation/readiness checks for both the companion IPA overlay and
+unified jailbreak core. `ready` now requires the verified quota trampoline, key
+request mode 0 and target quotas. Unsupported or incompletely patched builds
+report failure before the manual download request is sent. Native queueing,
+transport, callbacks, cache and persistence remain v7 implementations.
+`provenance-ui-v7.json` preserves the historical source hashes;
+`provenance-ui-v7.3.json` records this readiness revision.
 
 Implementation, integration, documentation and local builds: **OpenAI Codex**,
 under **Glongq**'s direction. Device testing and feedback: Glongq.
 Upstream EeveeSpotify contributors retain credit for the base project.
 
 ## Tested configuration
+
+These are historical baseline results. The v7.3 changes have local validation
+only and have not yet been verified on a real iPhone or jailbreak.
 
 - EeveeSpotify base: 7.0.0.
 - Spotify: **9.1.88**, ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2`.
@@ -50,7 +55,7 @@ python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.
 
 Outputs are in `NativeDownloads/outputs/`:
 
-- `spotify-ui-v7.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
+- `spotify-ui-v7.3.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
 - `SpotifyAudioProbe.dylib`: the companion library.
 - `build-manifest.json`: input/output hashes, source hashes and patch details.
 
@@ -74,17 +79,46 @@ empty to run validation only. With an original 7.0.0 base, also supply the URL o
 an Eevee library compiled from the current sources. The workflow does not compile
 the Theos project itself.
 
-The older upstream IPA workflows produce upstream builds. They do not implicitly
-include this overlay. For a local full upstream rebuild followed by the overlay:
+### Unified core and DEB injection
+
+The ordinary **Build IPA (PATCHED)** and **Build IPA (NO PATCH)** workflows now
+include a `native_downloads` option (enabled by default, exact 9.1.88 image only).
+Both prepare and verify the executable after injecting the native core. Their
+Patched/No Patch distinction concerns the upstream sideload compatibility shim;
+both native-download variants need the native executable patches.
+**Create IPA Packages** also detects a unified native DEB and prepares the image.
+Upstream-only DEBs pass through unchanged.
+
+For a local full build:
 
 ```sh
-NATIVE_DOWNLOADS=1 ./build-ipa-local.sh /absolute/path/to/decrypted-Spotify.ipa
+./build-ipa-local.sh /absolute/path/to/decrypted-Spotify-9.1.88.ipa
+# For an upstream-only build without native downloads:
+NATIVE_DOWNLOADS=0 ./build-ipa-local.sh /absolute/path/to/decrypted-Spotify.ipa
 ```
 
-This second route needs the upstream Theos/cyan/ipapatch dependencies. It compiles
-the upstream Eevee tweak before adding the overlay. Its input Spotify binary must
-still match the guarded UUID. A newly compiled upstream base is not claimed to be
-byte-identical to the Eevee 7.0.0 base used in the original device verification.
+Copying a native DEB's dylib into an IPA using an arbitrary injector does **not**
+apply these main-executable patches. A stock-iOS app cannot apply them by calling
+an app-bundled `MSHookMemory`. Prepare such an injected IPA before installation
+signing, using this repository's code:
+
+```sh
+python3 NativeDownloads/tools/prepare_ipa.py injected.ipa prepared.ipa
+```
+
+To build from an existing compatible Eevee base and a newly compiled unified core:
+
+```sh
+python3 NativeDownloads/tools/prepare_ipa.py base.ipa spotify-v7.3.ipa --core /path/to/rootless/EeveeSpotify.dylib
+```
+
+This builder verifies both original guard windows or exact known prepared bytes,
+rejects unknown code/RootHide cores/duplicate backends, patches before signing,
+checks the final archive, and records input/output hashes in `.build.json`.
+It preserves the input. Reprocessing an already prepared image is idempotent.
+Installation still requires the installation tool's normal signing process.
+Jailbreak DEBs instead apply the same guarded patches once through the jailbreak
+engine; see [jailbreak packages](jailbreak/README.md).
 
 ## Use
 

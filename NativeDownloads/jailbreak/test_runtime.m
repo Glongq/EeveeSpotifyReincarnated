@@ -1,10 +1,12 @@
 // Execute the production adapter against a synthetic mapped ARM64 image.
 #define SAP_JB_TEST 1
 #import "Runtime.m"
+#import "../src/NativeReadiness.h"
 #import <sys/mman.h>
 #import <assert.h>
 const struct mach_header_64 *JBTestHeader;
 static unsigned writes, failWrite;
+BOOL JBTestWriterAvailable=YES;
 BOOL JBTestWrite(void *p,const void *data,size_t size) {
     writes++;
     if(writes==failWrite) { // Simulate a partially completed engine write.
@@ -27,7 +29,7 @@ static uint8_t *fixture(void) {
     memcpy(p+JB_KeyWindowOffset,JB_KeyOriginal,sizeof(JB_KeyOriginal));
     memcpy(p+JB_ProviderOffset,JB_Provider,sizeof(JB_Provider));
     memcpy(p+JB_MappingOffset,JB_Mapping,sizeof(JB_Mapping));
-    JBTestHeader=(void *)p; writes=0;failWrite=0;return p;
+    JBTestHeader=(void *)p; writes=0;failWrite=0;JBTestWriterAvailable=YES;return p;
 }
 static void releaseImage(uint8_t *p) {munmap(p,JB_MappingOffset+4096);}
 static unsigned initialized;
@@ -37,11 +39,33 @@ static void *originalManagerInit(void *object,SEL selector,void *scheduler,void 
     initialized++;return object;
 }
 int main(void) {
-    uint8_t *p=fixture();assert(install());assert(writes==3);
+    // Reproduce the peer report: raised quotas with untouched code is NOT ready.
+    NSMutableDictionary *state=[@{@"music_limit":@1000000,@"music_duration_seconds":@2147483647,
+        @"restriction_guard_active":@NO,@"offline_key_request_mode":@1} mutableCopy];
+    assert(!SAPNativeReadiness(state,YES));
+    assert([state[@"quota_ready"] boolValue] && ![state[@"executable_patches_ready"] boolValue]);
+    state[@"restriction_guard_active"]=@YES;
+    assert(!SAPNativeReadiness(state,YES));
+    [state removeObjectForKey:@"offline_key_request_mode"];
+    assert(!SAPNativeReadiness(state,YES)); // nil must not be interpreted as mode 0.
+    state[@"offline_key_request_mode"]=@0;
+    assert(SAPNativeReadiness(state,YES));
+    assert(!SAPNativeReadiness(state,NO));
+    state[@"music_limit"]=@1;
+    assert(!SAPNativeReadiness(state,YES) && [state[@"executable_patches_ready"] boolValue]);
+    puts("PASS: real readiness policy rejects missing patches, unknown key mode, invalid manager and insufficient quotas");
+    uint8_t *p=fixture();
+    assert(spotifyIdentity((const void *)p));
+    p[sizeof(struct mach_header_64)+8]^=0x80;
+    assert(!spotifyIdentity((const void *)p)); // A host/different UUID is skipped.
+    p[sizeof(struct mach_header_64)+8]^=0x80;
+    assert(install());assert(writes==3);
     assert(!memcmp(p+JB_KeyCallOffset,JB_KeyPatched,4));
     assert(!memcmp(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline)));
     assert(install());assert(writes==3);releaseImage(p);
-    p=fixture();
+    p=fixture();JBTestWriterAvailable=NO;
+    assert(!prepare(NO) && !install() && writes==0);releaseImage(p);
+    p=fixture();JBTestWriterAvailable=NO;
     memcpy(p+JB_SetterOffset,JB_SetterPatched,4);
     memcpy(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline));
     memcpy(p+JB_KeyCallOffset,JB_KeyPatched,4);
