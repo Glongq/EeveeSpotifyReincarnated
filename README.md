@@ -1,4 +1,4 @@
-# EeveeSpotifyReincarnated — UNOFFICIAL FORK
+# EeveeSpotify Reincarnated + Sprite v1 — UNOFFICIAL FORK
 
 > [!IMPORTANT]
 > **This is Glongq's independently maintained fork**, not an official EeveeSpotify or Spotify release.
@@ -10,11 +10,11 @@
 **Upstream:** [SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)  
 **License:** [GPLv3](LICENSE), with the upstream Git history and contributor attribution retained.
 
-## Experimental Native Downloads
+## Sprite v1 — Native Downloads
 
-**Current development revision:** **Sprite Download Manager 7.3** (`spotify-ui-v7.3`) — correct native preparation/readiness checks and executable-patch verification for ordinary IPA packaging and jailbreak DEBs. Native queueing and persistence retain the v7 implementation. The manager is English-only and shows Version 7.3 at the bottom of its settings page. This revision has local validation only; it has not been verified on a real device. See [v7.3 changes](RELEASE_NOTES-native-v7.3.md). The publicly linked ready-made IPA below remains **v4**.
+**Current project version: Sprite v1**, for **EeveeSpotify Reincarnated 7.0.0 / Spotify 9.1.88**. Sprite provides native Spotify downloads and offline playback, with a manager in EeveeSpotify settings. The underlying development source revision is **7.3** (`spotify-ui-v7.3`); this internal revision number is separate from the public **Sprite v1** name. It includes improved readiness checks and executable-patch verification for IPA packaging and jailbreak DEBs. See [technical changes](RELEASE_NOTES-native-v7.3.md). Real-device testing of this development revision is still pending.
 
-### Verified v4 download baseline
+### Previously verified download baseline (v4)
 
 Native Spotify album/playlist downloads and a **Track downloads** section in EeveeSpotify settings. Downloads use Spotify's own offline storage; the extension does **not** export MP3 or WAV files. The user interface supports English and Russian; WAV recording is disabled.
 
@@ -37,9 +37,9 @@ The maintainer confirms that downloads and offline playback work through both Si
 - Diagnostics are off by default; some read requests may still time out.
 - Other Spotify binaries, long-term licence renewal and cellular-only downloading are **not verified**.
 
-### Download the ready-made IPA
+### IPA and downloads
 
-**[Download Native Downloads v4 IPA — Telegram post](https://t.me/glongqforks/2)**. Open the post and download the attached `.ipa` file. Use SideStore to install it, or import it into LiveContainer. Both methods were tested by the maintainer as described above.
+**[Latest IPA announcements — @glongqforks](https://t.me/glongqforks)**. Check the channel for the current **Sprite v1** build. The older [Native Downloads v4 IPA](https://t.me/glongqforks/2) is a previous verified release, not Sprite v1. SideStore and LiveContainer were tested on the earlier baseline; do not assume these results verify every new build.
 
 **Do not download `Source code (zip)` or `Source code (tar.gz)` to install the app.** Those are source-code archives, not an installable IPA. To examine or build the code, use the [native-v4 source release](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/native-v4).
 
@@ -64,14 +64,14 @@ Alternatively, use [GitHub Actions → Native Downloads — Validate / Build IPA
 
 See the complete [build and installation guide](NativeDownloads/README.md), [technical verification](docs/native-downloads.md), [source changelog](CHANGELOG-native-downloads.md), and [v7.3 source hashes](NativeDownloads/provenance-ui-v7.3.json).
 
-### Jailbreak packages — v7.3 development port
+### Jailbreak DEBs — Sprite v1 (internal source v7.3)
 
 > [!WARNING]
 > **NOT TESTED ON A REAL JAILBROKEN DEVICE.** These experimental packages passed
 > local tests and package validation only. SideStore/LiveContainer results do not
 > verify this jailbreak port.
 
-**[Download Sprite 7.3 jailbreak pre-release — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/sprite-v7.3-jailbreak)**
+**[Download Sprite jailbreak DEBs — rootless / RootHide](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/sprite-v7.3-jailbreak)** (release tag uses the internal v7.3 source revision)
 
 v7.3 fixes false native readiness, checks jailbreak writer availability and selects
 the exact Spotify image. Patching still runs once during offline-manager
@@ -87,7 +87,7 @@ not verify it. The build script does not publish or push anything.
 
 ### Reporting issues
 
-For native-download problems, enable diagnostics if needed and report redacted logs through [this fork's issue tracker](https://github.com/Glongq/EeveeSpotifyReincarnated/issues), not upstream. Please specify whether the issue occurred in SideStore or LiveContainer, the Spotify build and the iOS version.
+For Sprite v1 problems, enable diagnostics if needed and report redacted logs through [this fork's issue tracker](https://github.com/Glongq/EeveeSpotifyReincarnated/issues), not upstream. Please specify whether the issue occurred in SideStore or LiveContainer, the Spotify build and the iOS version.
 
 ## Upstream project and credits
 
