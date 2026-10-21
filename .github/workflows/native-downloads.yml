@@ -27,7 +27,8 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # NativeTracePatch regeneration assembles ARM64 with the Xcode SDK.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

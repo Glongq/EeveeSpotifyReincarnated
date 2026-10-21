@@ -138,7 +138,7 @@ engine; see [jailbreak packages](jailbreak/README.md).
 
 ## Tests
 
-The portable checks require Python only:
+The patcher checks require macOS, Python and Xcode: the native trace header is regenerated from ARM64 assembly using `xcrun`.
 
 ```sh
 python3 NativeDownloads/tools/test_patchers.py
