@@ -18,17 +18,6 @@
 
 Native Spotify album/playlist downloads and a **Track downloads** section in EeveeSpotify settings. Downloads use Spotify's own offline storage; the extension does **not** export MP3 or WAV files. The user interface supports English and Russian; WAV recording is disabled.
 
-### Compatibility and tested sideloading methods
-
-| Installation method | Installation | Sprite Download Manager | Offline playback |
-| --- | --- | --- | --- |
-| **SideStore** | Verified by maintainer | Verified by maintainer | Verified by maintainer |
-| **LiveContainer** | Verified by maintainer | Verified by maintainer | Verified by maintainer |
-
-**Tested configuration:** Spotify **9.1.88**, EeveeSpotify **7.0.0**, iPhone 15 Pro Max running **iOS 27.0.1**. This extension specifically checks the Spotify ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2` and guarded instruction bytes. Matching version numbers alone **do not** guarantee compatibility.
-
-The maintainer confirms that downloads and offline playback work through both SideStore and LiveContainer. The detailed native diagnostic/device observations documented in [the verification report](docs/native-downloads.md#verified-results) were captured during the LiveContainer tests.
-
 ### Features and limitations
 
 - Download albums and playlists with Spotify's built-in Download action.
