@@ -6,6 +6,7 @@
 #import "PlayerTrace.h"
 #import "Diagnostics.h"
 #import "Deadline.h"
+#import "DiagnosticTrace.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <stdatomic.h>
@@ -21,6 +22,7 @@ static os_unfair_lock candidatesLock = OS_UNFAIR_LOCK_INIT;
 static NSArray *installed;
 static _Thread_local unsigned offlineHookDepth;
 static _Thread_local unsigned playerHookDepth;
+static _Thread_local unsigned traceHookDepth;
 static dispatch_queue_t worker;
 static void *downloadWorkerKey=&downloadWorkerKey;
 static atomic_uint nativeWatches,nativeWatchesDropped;
@@ -43,14 +45,17 @@ static NSNumber *responseCode, *offlineAllowed, *streamError;
 static BOOL itemFound, polling, sentRequest, watchItems, existingDownload;
 static void (^notify)(NSString *);
 static atomic_bool active;
+static SAPTraceID jobTraceOperation;
 #ifdef SAP_TESTING
 static double pollSeconds = 0.01, startTimeoutSeconds = 0.12, totalTimeoutSeconds = 1;
 static double candidateTimeoutSeconds = 0.03;
 static double errorSettleSeconds = 0.12;
+static double serviceTimeoutSeconds = 0.04;
 #else
 static double pollSeconds = 1, startTimeoutSeconds = 30, totalTimeoutSeconds = 600;
 static double candidateTimeoutSeconds = 3;
 static double errorSettleSeconds = 30;
+static double serviceTimeoutSeconds = 8;
 #endif
 
 // Observe unanswered application calls without retaining the app's lifetime or
@@ -92,6 +97,7 @@ static SAPNativeCallWatch *watchNativeCall(NSString *method,NSData *payload,id e
 @property(nonatomic, copy) NSData *payload;
 @property(nonatomic, copy) void (^completion)(NSArray *);
 @property(nonatomic) NSUInteger attempt, expected, expectedRoute;
+@property(nonatomic) SAPTraceID traceOperation;
 @end
 @implementation SAPOfflineCall @end
 static NSMutableSet<SAPOfflineCall *> *calls;
@@ -154,10 +160,12 @@ static BOOL signature(Class cls, SEL sel, unsigned args, char returnType, Method
     return type[0] == returnType;
 }
 static void putHook(Class cls, SEL sel, Method method, id block, NSMutableArray *names) {
+    IMP previous=method_getImplementation(method);
     IMP replacement = imp_implementationWithBlock(block);
     if (!class_addMethod(cls, sel, replacement, method_getTypeEncoding(method)))
         class_replaceMethod(cls, sel, replacement, method_getTypeEncoding(method));
     [names addObject:[NSString stringWithFormat:@"%@.%@", NSStringFromClass(cls), NSStringFromSelector(sel)]];
+    SAPTraceRegisterHook(cls,sel,replacement,previous);
 }
 static void cancelHandle(id handle) {
     SEL sel = NSSelectorFromString(@"cancel"); Method method;
@@ -169,6 +177,136 @@ static void acquireHandle(id handle) {
     SEL sel = NSSelectorFromString(@"acquire"); Method method;
     if (signature(object_getClass(handle), sel, 2, 'v', &method)) ((void (*)(id, SEL))objc_msgSend)(handle, sel);
 }
+
+@interface SAPReadOnlyCall : NSObject
+@property(nonatomic,copy) NSString *serviceName, *method;
+@property(nonatomic,strong) NSData *payload;
+@property(nonatomic,strong) NSArray *endpoints;
+@property(nonatomic,strong) id lifetime;
+@property(nonatomic,strong) dispatch_source_t deadline;
+@property(nonatomic,copy) void (^completion)(NSData *, NSString *);
+@property(nonatomic) NSUInteger endpointIndex, attempt;
+@property(nonatomic) BOOL finished;
+@property(nonatomic) SAPTraceID traceOperation;
+@end
+@implementation SAPReadOnlyCall @end
+static NSMutableSet<SAPReadOnlyCall *> *readOnlyCalls;
+
+@interface SAPAlbumDownloadCall : NSObject
+@property(nonatomic,copy) NSString *uri;
+@property(nonatomic,strong) id lifetime;
+@property(nonatomic,strong) dispatch_source_t deadline;
+@property(nonatomic,copy) void (^message)(NSString *);
+@property(nonatomic) SAPTraceID traceOperation;
+@end
+@implementation SAPAlbumDownloadCall @end
+static SAPAlbumDownloadCall *albumCall;
+
+static void albumMessage(void (^callback)(NSString *), NSString *message) {
+    SAPJournalNoteAction(@"album_user_message",@{@"text":message?:@""});
+    if (callback) dispatch_async(dispatch_get_main_queue(), ^{ callback(message); });
+}
+
+static void finishAlbumCall(SAPAlbumDownloadCall *call, BOOL cancel) {
+    if (albumCall != call) return;
+    if (call.deadline) { dispatch_source_cancel(call.deadline); call.deadline = nil; }
+    if (cancel) cancelHandle(call.lifetime);
+    call.lifetime = nil;
+    albumCall = nil;
+}
+
+static void finishReadOnlyCall(SAPReadOnlyCall *call, NSData *response, NSString *error) {
+    if (call.finished) return;
+    call.finished = YES;
+    if (call.deadline) { dispatch_source_cancel(call.deadline); call.deadline = nil; }
+    cancelHandle(call.lifetime); call.lifetime = nil;
+    void (^completion)(NSData *, NSString *) = call.completion;
+    call.completion = nil; call.endpoints = nil; call.payload = nil;
+    [readOnlyCalls removeObject:call];
+    if (completion) dispatch_async(dispatch_get_main_queue(), ^{ SAPTraceWithOperation(call.traceOperation,^{completion(response,error);}); });
+}
+
+static void tryReadOnlyCall(SAPReadOnlyCall *call) {
+    if (call.finished) return;
+    if (call.deadline) { dispatch_source_cancel(call.deadline); call.deadline = nil; }
+    cancelHandle(call.lifetime); call.lifetime = nil;
+    if (call.endpointIndex >= call.endpoints.count) {
+        finishReadOnlyCall(call, nil, @"Spotify did not answer the request");
+        return;
+    }
+    id endpoint = call.endpoints[call.endpointIndex++];
+    SEL selector = NSSelectorFromString(@"callSingle:method:payload:onResponse:");
+    Method method;
+    if (!signature(object_getClass(endpoint), selector, 6, '@', &method)) {
+        tryReadOnlyCall(call);
+        return;
+    }
+    NSUInteger attempt = ++call.attempt;
+    SAP_TRACE("service_call","attempt",call.traceOperation,@{@"method":call.method,@"service":call.serviceName,@"attempt":@(attempt),@"transport":NSStringFromClass(object_getClass(endpoint)),@"replay_policy":call.endpoints.count==1?@"single_endpoint":@"read_only_fallback"});
+    void (^responseBlock)(NSData *) = ^(NSData *response) {
+        dispatch_async(worker, ^{
+            if (call.finished || call.attempt != attempt) return;
+            if (![response isKindOfClass:NSData.class] || response.length > 8 * 1024 * 1024) {
+                tryReadOnlyCall(call);
+                return;
+            }
+            rememberTransport(endpoint, NO, YES);
+            finishReadOnlyCall(call, response, nil);
+        });
+    };
+    @try {
+        SAPTraceWithOperation(call.traceOperation,^{call.lifetime=((id (*)(id,SEL,id,id,id,id))objc_msgSend)(endpoint,selector,call.serviceName,call.method,call.payload,responseBlock);});
+        acquireHandle(call.lifetime);
+    } @catch (__unused NSException *exception) {
+        tryReadOnlyCall(call);
+        return;
+    }
+    call.deadline = SAPScheduleDeadline(worker, serviceTimeoutSeconds, ^{
+        if (!call.finished && call.attempt == attempt) tryReadOnlyCall(call);
+    });
+}
+
+void SAPCallReadOnlyService(NSString *serviceName, NSString *method, NSData *payload,
+                            void (^completion)(NSData *response, NSString *error)) {
+    SAPInstallTrackDownloader();
+    if (!serviceName.length || !method.length || ![payload isKindOfClass:NSData.class]) {
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, @"Invalid metadata request"); });
+        return;
+    }
+    SAPTraceID parent=SAPTraceCurrentOperation();
+    if(!parent&&SAPTraceIsActive())parent=SAPTraceBegin(@"read_only_service",@"sprite",@{@"service":serviceName,@"method":method});
+    dispatch_async(worker, ^{
+        SAPReadOnlyCall *call = [SAPReadOnlyCall new];
+        call.serviceName = serviceName; call.method = method; call.payload = payload;
+        call.endpoints = transportCandidates(); call.completion = completion;
+        call.traceOperation=parent;
+        if (!readOnlyCalls) readOnlyCalls = [NSMutableSet set];
+        [readOnlyCalls addObject:call];
+        tryReadOnlyCall(call);
+    });
+}
+void SAPCallOfflineCommandOnce(NSString *method,NSData *payload,void (^completion)(NSData *,NSString *)) {
+    SAPInstallTrackDownloader();
+    if(![method isEqual:@"SetOfflinePlaybackAllowed"] || ![payload isKindOfClass:NSData.class]) {
+        if(completion)dispatch_async(dispatch_get_main_queue(),^{completion(nil,@"Unsupported explicit offline command");});return;
+    }
+    SAPTraceID parent=SAPTraceCurrentOperation();
+    if(!parent&&SAPTraceIsActive())parent=SAPTraceBegin(@"explicit_offline_command",@"sprite",@{@"method":method});
+    dispatch_async(worker,^{
+        os_unfair_lock_lock(&candidatesLock);id endpoint=provenTransport;os_unfair_lock_unlock(&candidatesLock);
+        if(!endpoint){if(completion)dispatch_async(dispatch_get_main_queue(),^{completion(nil,@"No verified Spotify transport. Refresh the device state first.");});return;}
+        SAPReadOnlyCall *call=[SAPReadOnlyCall new];
+        call.serviceName=service;call.method=method;call.payload=payload;call.endpoints=@[endpoint];
+        call.traceOperation=parent;
+        call.completion=^(NSData *data,NSString *error){
+            SAPJournalNoteAction(@"offline_explicit_command_reply",@{@"method":method,@"response_received":@(data!=nil),@"response_bytes":@(data.length),@"error":error?:@"",@"automatic_replay":@NO});
+            if(completion)completion(data,error);
+        };
+        if(!readOnlyCalls)readOnlyCalls=[NSMutableSet set];[readOnlyCalls addObject:call];
+        SAPJournalNoteAction(@"offline_explicit_command_requested",@{@"method":method,@"automatic_replay":@NO,@"transport_class":NSStringFromClass(object_getClass(endpoint))});
+        tryReadOnlyCall(call); // Its endpoint list contains exactly one entry.
+    });
+}
 static NSString *errorName(uint64_t code) {
     switch (code) {
         case 0: return @"SUCCESS"; case 1: return @"GENERIC"; case 8: return @"DISK_FULL";
@@ -178,6 +316,7 @@ static NSString *errorName(uint64_t code) {
     }
 }
 static void publishActivity(BOOL isActive) {
+    if(isActive&&!jobTraceOperation&&SAPTraceIsActive())jobTraceOperation=SAPTraceBegin(@"download_seen_after_diagnostics_enabled",@"sprite_monitor",@{@"started_before_trace":@YES,@"uri":jobURL.absoluteString?:@""});
     NSDictionary *report = @{@"phase": phase, @"detail": detail, @"track_uri": jobURL.absoluteString ?: @"",
         @"track_title": title ?: @"", @"api": @"Offline.AddDownload", @"item_state": @(nativeState),
         @"sync_progress": @(progress), @"item_found": @(itemFound), @"status_checks": @(polls),
@@ -187,8 +326,10 @@ static void publishActivity(BOOL isActive) {
         @"transport_class": jobTransport ? NSStringFromClass(object_getClass(jobTransport)) : @"",
         @"transport_candidate": @(candidateIndex), @"transport_candidates": @(jobCandidates.count),
         @"transport_verified": @(routeVerified), @"exception_name": exceptionName ?: NSNull.null,
-        @"active": @(isActive)};
+        @"active": @(isActive),@"offline_audio_playback_tested":@NO,
+        @"completion_evidence":[phase isEqual:@"completed"]?@"Spotify GetItems reported DOWNLOADED twice":@"No completed download confirmed by this monitor"};
     NSMutableDictionary *value=[report mutableCopy];
+    SAP_TRACE("download","monitor_state",jobTraceOperation,report);
     value[@"error_settle_seconds"]=@(errorSettleSeconds);
     value[@"error_wait_seconds"]=@(errorStateSince>0?MAX(0,CFAbsoluteTimeGetCurrent()-errorStateSince):0);
     NSDictionary *nativeError=jobURL?SAPJournalNativeErrorForURI(jobURL.absoluteString):nil;
@@ -213,6 +354,10 @@ static void sendMessage(NSString *message) {
 }
 static void finish(NSString *newPhase, NSString *message) {
     phase = newPhase; detail = message;
+    SAPJournalNoteAction(@"single_track_finished",@{@"track_uri":jobURL.absoluteString?:@"",
+        @"phase":newPhase?:@"",@"detail":message?:@"",
+        @"request_sent":@(sentRequest),@"response_code":responseCode?:NSNull.null,
+        @"observed_native_state":@(nativeState)});
     if (timer) { dispatch_source_cancel(timer); timer = nil; }
     for (SAPOfflineCall *call in calls) { cancelCallDeadline(call);cancelHandle(call.lifetime); call.lifetime = nil;call.completion=nil; }
     [calls removeAllObjects]; cancelHandle(errorStream); errorStream = nil;
@@ -260,7 +405,7 @@ static void invokeSingle(SAPOfflineCall *call) {
     NSUInteger attempt=call.attempt;
     void (^callback)(NSData *)=^(NSData *data){
         dispatch_async(worker,^{
-            if(!currentCall(call,attempt))return;
+            if(!currentCall(call,attempt)){SAP_TRACE("download","callback_ignored",call.traceOperation,@{@"method":call.method,@"reason":@"attempt_or_job_no_longer_current"});return;}
             NSArray *fields=[data isKindOfClass:NSData.class] && data.length<=262144?SAPProtoFields(data):nil;
             if(!fields) {singleFailed(call,attempt,@"invalid or missing reply");return;}
             cancelCallDeadline(call);[calls removeObject:call];call.lifetime=nil;
@@ -270,8 +415,8 @@ static void invokeSingle(SAPOfflineCall *call) {
         });
     };
     @try {
-        call.lifetime=((id(*)(id,SEL,id,id,id,id))objc_msgSend)(call.endpoint,
-            NSSelectorFromString(@"callSingle:method:payload:onResponse:"),service,call.method,call.payload,callback);
+        SAPTraceWithOperation(call.traceOperation,^{call.lifetime=((id(*)(id,SEL,id,id,id,id))objc_msgSend)(call.endpoint,
+            NSSelectorFromString(@"callSingle:method:payload:onResponse:"),service,call.method,call.payload,callback);});
         acquireHandle(call.lifetime);
     } @catch(NSException *exception) {exceptionName=exception.name;singleFailed(call,attempt,exception.name);return;}
     // Retrying is restricted to reads. An unacknowledged AddDownload is never replayed.
@@ -284,6 +429,7 @@ static void invokeSingle(SAPOfflineCall *call) {
 static void single(NSString *method,NSData *payload,void (^completion)(NSArray *)) {
     SAPOfflineCall *call=[SAPOfflineCall new];call.endpoint=jobTransport;
     call.method=method;call.payload=payload;call.completion=completion;
+    SAPTraceWithOperation(jobTraceOperation,^{call.traceOperation=SAPTraceIsActive()?SAPTraceBegin(@"download_service_call",@"sprite_download",@{@"method":method,@"track_uri":jobURL.absoluteString?:@""}):0;});
     call.expected=generation;call.expectedRoute=routeGeneration;[calls addObject:call];invokeSingle(call);
 }
 static NSString *timeoutMessage(void) {
@@ -312,7 +458,7 @@ static void queryItem(void) {
         if (itemFound && nativeState == 3) {
             phase = @"verifying"; detail = SAPL(@"Spotify сообщил, что трек скачан. Повторно проверяю состояние",@"Spotify reported the track as downloaded. Checking its status again");
             if (++consecutiveComplete >= 2) {
-                finish(@"completed", [NSString stringWithFormat:SAPL(@"«%@» полностью скачан в Spotify. Отдельный MP3/WAV не создан.",@"“%@” is fully downloaded in Spotify. No separate MP3/WAV file was created."), title]); return;
+                finish(@"completed", [NSString stringWithFormat:SAPL(@"Spotify дважды сообщил, что «%@» скачан. Офлайн-воспроизведение не проверено. Отдельный файл не создан.",@"Spotify twice reported “%@” as downloaded. Offline playback has not been tested. No separate audio file was created."), title]); return;
             }
         } else {
             consecutiveComplete = 0;
@@ -469,9 +615,12 @@ void SAPInstallTrackDownloader(void) {
                     rememberNativeCall(self, serviceName, methodName);
 #endif
                     if(!SAPDiagnosticsEnabled())return ((id (*)(id,SEL,id,id,id,id))original)(self,command,serviceName,methodName,payload,callback);
+                    SAPTraceHookCalled(object_getClass(self),command);
+                    SAPTraceRPC *trace=traceHookDepth==0?SAPTraceRPCBegin(serviceName,methodName,payload,
+                        SAPJournalOnOwnQueue()?@"sprite_diagnostic_query":dispatch_get_specific(downloadWorkerKey)?@"sprite_service":@"spotify",self,[commandName hasPrefix:@"callStream:"]):nil;
                     BOOL offline=[serviceName isKindOfClass:NSString.class] && [serviceName isEqual:service];
                     BOOL playerCall=[serviceName isKindOfClass:NSString.class] && [serviceName isEqual:@"spotify.player.esperanto.proto.ContextPlayer"];
-                    if(SAPDiagnosticsEnabled() && playerCall && playerHookDepth==0) SAPObservePlayerRequest(serviceName,methodName,payload);
+                    if(SAPDiagnosticsEnabled() && playerCall && playerHookDepth==0)SAPTraceWithOperation(trace?trace.identifier:SAPTraceCurrentOperation(),^{SAPObservePlayerRequest(serviceName,methodName,payload);});
                     BOOL outer=offlineHookDepth==0, own=SAPJournalOnOwnQueue();
                     BOOL menu=dispatch_get_specific(downloadWorkerKey)!=NULL;
                     if (SAPDiagnosticsEnabled() && offline && outer && !own && callback) {
@@ -500,10 +649,24 @@ void SAPInstallTrackDownloader(void) {
                             };
                         }
                     }
+                    // Observe every service crossing this verified transport. The
+                    // specialized journal above still decodes only Offline.
+                    if(callback&&trace) {
+                        if([commandName hasPrefix:@"callSingle:"]) {
+                            void (^next)(id)=callback;
+                            callback=^(id data){SAPTraceRPCReply(trace,data);SAPTraceWithOperation(trace.identifier,^{next(data);});};
+                        }else {
+                            BOOL (^next)(id)=callback;
+                            callback=^BOOL(id data){SAPTraceRPCReply(trace,data);__block BOOL keep;
+                                SAPTraceWithOperation(trace.identifier,^{keep=next(data);});if(!keep)SAPTraceRPCStreamEnd(trace,@"callback_returned_false");return keep;};
+                        }
+                    }
                     if(offline)offlineHookDepth++;
                     if(playerCall)playerHookDepth++;
-                    @try {return ((id (*)(id, SEL, id, id, id, id))original)(self, command, serviceName, methodName, payload, callback);}
-                    @finally {if(offline)offlineHookDepth--;if(playerCall)playerHookDepth--;}
+                    traceHookDepth++;
+                    @try {id result=((id (*)(id, SEL, id, id, id, id))original)(self, command, serviceName, methodName, payload, callback);SAPTraceRPCReturned(trace,result);return result;}
+                    @catch(NSException *e){SAPTraceRPCException(trace,e);@throw;}
+                    @finally {traceHookDepth--;if(offline)offlineHookDepth--;if(playerCall)playerHookDepth--;}
                 }, names);
             }
         }
@@ -542,6 +705,7 @@ void SAPInstallTrackDownloader(void) {
 }
 void SAPDownloadCurrentTrack(void (^message)(NSString *)) {
     SAPInstallTrackDownloader();
+    SAPTraceID trace=SAPTraceCurrentOperation();if(!trace&&SAPTraceIsActive())trace=SAPTraceBegin(@"download_current_track",@"sprite_api",@{});
     if(SAPDiagnosticsEnabled())SAPJournalRefresh(@"download button");
     if (atomic_load(&active)) { if (message) message(SAPTrackDownloadSummary()); return; }
     id state = object(player, @"state"), track = object(state, @"track"), uri = object(track, @"URI");
@@ -550,14 +714,18 @@ void SAPDownloadCurrentTrack(void (^message)(NSString *)) {
     NSString *identifier = [urlString hasPrefix:@"spotify:track:"] ? [urlString substringFromIndex:14] : nil;
     NSCharacterSet *invalid = [NSCharacterSet characterSetWithCharactersInString:@"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"].invertedSet;
     if (identifier.length != 22 || [identifier rangeOfCharacterFromSet:invalid].location != NSNotFound) {
+        SAPJournalNoteAction(@"single_track_rejected",@{@"reason":@"current_track_uri_unavailable"});
         if (message) message(SAPL(@"Не удалось определить текущий музыкальный трек. Запусти его на этом iPhone и повтори.",@"Could not identify the current music track. Start it on this iPhone and try again.")); return;
     }
     NSArray *available = transportCandidates(); id currentTransport = available.firstObject; Method method;
     if (!signature(object_getClass(currentTransport), NSSelectorFromString(@"callSingle:method:payload:onResponse:"), 6, '@', &method)) {
+        SAPJournalNoteAction(@"single_track_rejected",@{@"track_uri":urlString,@"reason":@"spotify_transport_unavailable"});
         if (message) message(SAPL(@"Транспорт ядра Spotify ещё не получен. Начни воспроизведение и повтори.",@"The Spotify core transport is not available yet. Start playback and try again.")); return;
     }
+    SAPJournalNoteAction(@"single_track_requested",@{@"track_uri":urlString,@"transport_available":@YES});
     dispatch_async(worker, ^{
         if (atomic_load(&active)) return;
+        jobTraceOperation=trace;
         generation++; jobCandidates = available; candidateIndex = 0; routeVerified = NO; exceptionName = nil;
         jobURL = [NSURL URLWithString:urlString];
         title = [trackTitle isKindOfClass:NSString.class] && trackTitle.length ? [trackTitle copy] : identifier;
@@ -574,7 +742,7 @@ void SAPDownloadCurrentTrack(void (^message)(NSString *)) {
         dispatch_source_set_event_handler(timer, ^{ check(); }); dispatch_resume(timer);
         NSUInteger expected = generation;
         atomic_store(&preparationGeneration, expected);
-        SAPPrepareNativeOffline(^BOOL{
+        SAPTraceWithOperation(jobTraceOperation,^{SAPPrepareNativeOffline(^BOOL{
             return atomic_load(&active) && atomic_load(&preparationGeneration) == expected;
         }, ^(BOOL ready, NSString *reason) {
             dispatch_async(worker, ^{
@@ -582,15 +750,135 @@ void SAPDownloadCurrentTrack(void (^message)(NSString *)) {
                 if (!ready) { finish(@"native_preparation_failed", reason); return; }
                 selectNextCandidate();
             });
-        });
+        });});
     });
+}
+void SAPDownloadCurrentAlbum(void (^message)(NSString *)) {
+    SAPInstallTrackDownloader();
+    SAPTraceID trace=SAPTraceCurrentOperation();if(!trace&&SAPTraceIsActive())trace=SAPTraceBegin(@"download_current_album",@"sprite_api",@{});
+    id state = object(player, @"state"), track = object(state, @"track");
+    id value = object(track, @"albumURI");
+    NSString *albumURI = [value isKindOfClass:NSURL.class] ? [value absoluteString] :
+                         [value isKindOfClass:NSString.class] ? value : nil;
+    NSString *prefix = @"spotify:album:";
+    NSString *identifier = [albumURI hasPrefix:prefix] ? [albumURI substringFromIndex:prefix.length] : nil;
+    NSCharacterSet *invalid = [NSCharacterSet characterSetWithCharactersInString:
+        @"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"].invertedSet;
+    if (identifier.length != 22 || [identifier rangeOfCharacterFromSet:invalid].location != NSNotFound) {
+        SAPJournalNoteAction(@"album_rejected",@{@"reason":@"current_album_uri_unavailable"});
+        if (message) message(SAPL(@"Не удалось определить альбом текущего трека. Запусти трек на этом iPhone и повтори.",
+                               @"Could not identify the current track's album. Start the track on this iPhone and try again."));
+        return;
+    }
+    SAPJournalNoteAction(@"album_requested",@{@"album_uri":albumURI});
+    void (^reply)(NSString *) = [message copy];
+    SAPTraceWithOperation(trace,^{SAPPrepareNativeOffline(^BOOL { return YES; }, ^(BOOL ready, NSString *reason) {
+        if (!ready) { SAPJournalNoteAction(@"album_preparation_failed",@{@"album_uri":albumURI,@"reason":reason?:@""});albumMessage(reply, reason); return; }
+        dispatch_async(worker, ^{
+            if (albumCall) {
+                albumMessage(reply, SAPL(@"Запрос на загрузку альбома уже выполняется.",
+                                         @"An album download request is already in progress."));
+                return;
+            }
+            id endpoint = transportCandidates().firstObject;
+            SEL selector = NSSelectorFromString(@"callSingle:method:payload:onResponse:");
+            Method method;
+            if (!signature(object_getClass(endpoint), selector, 6, '@', &method)) {
+                albumMessage(reply, SAPL(@"Транспорт загрузчика Spotify недоступен. Начни воспроизведение и повтори.",
+                                         @"The Spotify downloader transport is unavailable. Start playback and try again."));
+                return;
+            }
+            SAPAlbumDownloadCall *call = [SAPAlbumDownloadCall new];
+            call.traceOperation=trace;
+            call.uri = albumURI;
+            call.message = reply;
+            albumCall = call;
+            NSData *payload = SAPProtoBytes(2, [albumURI dataUsingEncoding:NSUTF8StringEncoding]);
+            void (^onResponse)(NSData *) = ^(NSData *response) {
+                dispatch_async(worker, ^{
+                    if (albumCall != call) return;
+                    NSArray *fields = [response isKindOfClass:NSData.class] && response.length <= 4096 ?
+                                      SAPProtoFields(response) : nil;
+                    finishAlbumCall(call, NO);
+                    if (!fields) {
+                        SAPJournalNoteAction(@"album_add_reply_invalid",@{@"album_uri":albumURI,@"response_bytes":@([response isKindOfClass:NSData.class]?response.length:0)});
+                        albumMessage(reply, SAPL(@"Spotify вернул некорректный ответ. Загрузка альбома не подтверждена.",
+                                                 @"Spotify returned an invalid reply. The album download is unconfirmed."));
+                        return;
+                    }
+                    uint64_t code = SAPProtoNumber(fields, 1, 0);
+                    SAPJournalNoteAction(@"album_add_reply",@{@"album_uri":albumURI,@"result_code":@(code),@"response_bytes":@(response.length)});
+                    if (code) {
+                        albumMessage(reply, [NSString stringWithFormat:
+                            SAPL(@"Spotify отклонил загрузку альбома: %@ (%llu).",
+                                 @"Spotify rejected the album download: %@ (%llu)."),
+                            errorName(code), (unsigned long long)code]);
+                        return;
+                    }
+                    // A successful RPC acknowledges the command. Confirm that
+                    // Spotify actually created a context before reporting a start.
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), worker, ^{
+                        NSMutableData *query = [SAPProtoBytes(1, SAPProtoInteger(1, 1)) mutableCopy];
+                        [query appendData:SAPProtoBytes(3, [albumURI dataUsingEncoding:NSUTF8StringEncoding])];
+                        SAPTraceWithOperation(call.traceOperation,^{SAPCallReadOnlyService(service, @"GetContexts", query,
+                            ^(NSData *data, NSString *error) {
+                                NSArray *envelope = data ? SAPProtoFields(data) : nil;
+                                NSArray *info = SAPProtoFields(SAPProtoData(envelope, 1));
+                                NSArray *context = SAPProtoFields(SAPProtoData(info, 1));
+                                NSString *returnedURI = SAPProtoString(context, 1);
+                                SAPJournalNoteAction(@"album_context_check",@{@"album_uri":albumURI,
+                                    @"returned_uri":returnedURI?:@"",@"state":@(SAPProtoNumber(context,2,0)),
+                                    @"read_error":error?:@""});
+                                if (![returnedURI isEqualToString:albumURI]) {
+                                    albumMessage(reply, SAPL(@"Spotify принял команду, но начало загрузки альбома пока не подтверждено.",
+                                                             @"Spotify accepted the command, but the album download has not yet been confirmed."));
+                                    return;
+                                }
+                                uint64_t state = SAPProtoNumber(context, 2, 0);
+                                if (state == 3) {
+                                    albumMessage(reply, SAPL(@"Альбом уже полностью загружен в Spotify.",
+                                                             @"The album is already fully downloaded in Spotify."));
+                                } else if (state == 2 || state == 4 || state == 5) {
+                                    albumMessage(reply, SAPL(@"Загрузка альбома началась. Прогресс смотри в Spotify.",
+                                                             @"The album download has started. Check its progress in Spotify."));
+                                } else {
+                                    albumMessage(reply, SAPL(@"Spotify принял команду, но альбом пока не появился в загрузке.",
+                                                             @"Spotify accepted the command, but the album is not yet downloading."));
+                                }
+                            });});
+                    });
+                });
+            };
+            @try {
+                SAPTraceWithOperation(call.traceOperation,^{call.lifetime=((id (*)(id,SEL,id,id,id,id))objc_msgSend)(endpoint,selector,service,@"AddDownload",payload,onResponse);});
+                acquireHandle(call.lifetime);
+                SAPJournalNoteAction(@"album_add_sent",@{@"album_uri":albumURI,@"lifetime_returned":@(call.lifetime!=nil)});
+            } @catch (NSException *exception) {
+                SAPJournalNoteAction(@"album_add_exception",@{@"album_uri":albumURI,@"name":exception.name?:@"unknown"});
+                finishAlbumCall(call, YES);
+                albumMessage(reply, SAPL(@"Spotify не принял команду загрузки альбома.",
+                                         @"Spotify did not accept the album download command."));
+                return;
+            }
+            call.deadline = SAPScheduleDeadline(worker, 30, ^{
+                if (albumCall != call) return;
+                SAPJournalNoteAction(@"album_add_timeout",@{@"album_uri":albumURI,@"seconds":@30});
+                finishAlbumCall(call, YES);
+                albumMessage(reply, SAPL(@"Spotify не ответил на команду за 30 секунд. Загрузка альбома не подтверждена.",
+                                         @"Spotify did not answer within 30 seconds. The album download is unconfirmed."));
+            });
+        });
+    });});
 }
 void SAPVerifyCurrentTrack(void (^message)(NSString *)) {
     id value=object(object(object(player,@"state"),@"track"),@"URI");
     NSString *uri=[value isKindOfClass:NSURL.class]?[value absoluteString]:[value isKindOfClass:NSString.class]?value:nil;
-    if(![uri hasPrefix:@"spotify:track:"]) {if(message)message(SAPL(@"Текущий музыкальный трек не определён.",@"The current music track is not identified."));return;}
+    if(![uri hasPrefix:@"spotify:track:"]) {SAPJournalNoteAction(@"verify_track_rejected",@{@"reason":@"current_track_uri_unavailable"});if(message)message(SAPL(@"Текущий музыкальный трек не определён.",@"The current music track is not identified."));return;}
+    SAPJournalNoteAction(@"verify_track_requested",@{@"track_uri":uri});
     if(SAPDiagnosticsEnabled())SAPReadNativeTrackState(uri);
     SAPJournalVerifyTrack(uri,^(NSDictionary *track){
+        SAPJournalNoteAction(@"verify_track_result",@{@"track_uri":uri,@"state":track[@"state"]?:@"unseen",
+            @"state_code":track[@"state_code"]?:NSNull.null,@"progress":track[@"progress"]?:NSNull.null});
         if(!message)return;
         if(!track || [track[@"state"] isEqual:@"unseen"]) {
             message(SAPDiagnosticsEnabled()?SAPL(@"Ядро не подтвердило состояние этого трека. Каналы и тайм-ауты записаны в журнал.",@"The core did not confirm this track's status. Transports and timeouts were recorded in the log."):SAPL(@"Ядро не подтвердило состояние этого трека. Для подробного отчёта включи диагностику.",@"The core did not confirm this track's status. Enable diagnostics for a detailed report."));return;
@@ -606,16 +894,21 @@ void SAPCancelTrackDownload(void) {
     if (!worker) return;
     dispatch_async(worker, ^{
         if (!atomic_load(&active)) return;
+        SAPJournalNoteAction(@"single_track_cancel_requested",@{@"track_uri":jobURL.absoluteString?:@"",
+            @"add_acknowledged":@(sentRequest&&responseCode&&responseCode.unsignedLongLongValue==0)});
         // RemoveDownload has the exact same DownloadRequest schema. It is only
         // sent for a request that AddDownload acknowledged during this job.
         if (sentRequest && responseCode && responseCode.unsignedLongLongValue == 0) {
             NSData *payload = SAPProtoBytes(2, [jobURL.absoluteString dataUsingEncoding:NSUTF8StringEncoding]);
             SEL sel = NSSelectorFromString(@"callSingle:method:payload:onResponse:");
             @try {
-                id lifetime = ((id (*)(id, SEL, id, id, id, id))objc_msgSend)(jobTransport, sel, service, @"RemoveDownload", payload, ^(NSData *response) {});
+                __block id lifetime;
+                SAPTraceWithOperation(jobTraceOperation,^{lifetime = ((id (*)(id, SEL, id, id, id, id))objc_msgSend)(jobTransport, sel, service, @"RemoveDownload", payload, ^(NSData *response) {});});
                 // acquire transfers request ownership to the native transport;
                 // no observer/timer remains in our tweak after cancellation.
                 if ([lifetime respondsToSelector:NSSelectorFromString(@"acquire")]) ((void (*)(id, SEL))objc_msgSend)(lifetime, NSSelectorFromString(@"acquire"));
+                SAPJournalNoteAction(@"single_track_remove_sent",@{@"track_uri":jobURL.absoluteString?:@"",
+                    @"lifetime_returned":@(lifetime!=nil),@"reply_confirmed":@NO});
             } @catch (NSException *exception) {}
         }
         finish(@"cancelled", SAPL(@"Проверка остановлена. Если команда была принята, отправлен запрос RemoveDownload; его выполнение здесь не подтверждается.",@"Monitoring stopped. If the command was accepted, RemoveDownload was sent; its completion is not confirmed here."));
@@ -633,6 +926,7 @@ NSDictionary *SAPTrackDownloadReportWithJournal(NSDictionary *journalReport) {
     report[@"history"] = recent;
     report[@"application_watches_pending"]=@(atomic_load(&nativeWatches));
     report[@"application_watches_dropped"]=@(atomic_load(&nativeWatchesDropped));
+    report[@"audio_key_material_collected"]=@NO;
     return report;
 }
 NSString *SAPTrackDownloadSummary(void) {

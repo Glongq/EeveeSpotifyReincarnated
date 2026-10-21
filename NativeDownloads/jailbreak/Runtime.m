@@ -11,6 +11,7 @@
 #import <libkern/OSCacheControl.h>
 #import "fishhook.h"
 #import "Guards.h"
+#import "NativeTracePatch.h"
 #if __has_feature(ptrauth_calls)
 #import <ptrauth.h>
 #endif
@@ -113,73 +114,82 @@ static const struct mach_header_64 *spotifyImage(void) {
 }
 #endif
 
+struct NativeCodeChange {void *target;size_t size;uint8_t before[512];const void *after;};
 static BOOL prepare(BOOL apply) {
 #ifdef SAP_JB_TEST
     const struct mach_header_64 *header=JBTestHeader;
 #else
     const struct mach_header_64 *header=spotifyImage();
 #endif
-    if(!header || header->magic!=MH_MAGIC_64 || header->cputype!=CPU_TYPE_ARM64 ||
-       header->sizeofcmds>1024*1024 || header->ncmds>4096) return NO;
-    const uint8_t *base=(const void *)header;
-    uintptr_t end=sizeof(*header)+header->sizeofcmds, cursor=sizeof(*header);
-    BOOL uuidOK=NO; uint64_t textSize=0, firstSection=UINT64_MAX;
-    for(uint32_t i=0;i<header->ncmds;i++) {
-        if(cursor+sizeof(struct load_command)>end) return NO;
+    if(!spotifyIdentity(header))return NO;
+    uint8_t *base=(void *)header;
+    uintptr_t end=sizeof(*header)+header->sizeofcmds,cursor=sizeof(*header);
+    uint64_t textSize=0,firstSection=UINT64_MAX;
+    for(unsigned i=0;i<header->ncmds;i++) {
         const struct load_command *lc=(const void *)(base+cursor);
-        if(lc->cmdsize<sizeof(*lc) || cursor+lc->cmdsize>end) return NO;
-        if(lc->cmd==LC_UUID && lc->cmdsize==sizeof(struct uuid_command))
-            uuidOK=bytes(((const struct uuid_command *)lc)->uuid,JB_UUID,sizeof(JB_UUID));
         if(lc->cmd==LC_SEGMENT_64 && lc->cmdsize>=sizeof(struct segment_command_64)) {
             const struct segment_command_64 *seg=(const void *)lc;
             if(!strncmp(seg->segname,"__TEXT",16)) {
                 if(seg->vmaddr!=0x100000000 || seg->fileoff || (seg->initprot&5)!=5 ||
-                   seg->cmdsize<sizeof(*seg)+(uint64_t)seg->nsects*sizeof(struct section_64)) return NO;
+                   seg->cmdsize<sizeof(*seg)+(uint64_t)seg->nsects*sizeof(struct section_64))return NO;
                 textSize=seg->filesize;
                 const struct section_64 *sections=(const void *)(seg+1);
-                for(uint32_t j=0;j<seg->nsects;j++)
-                    if(sections[j].addr>=seg->vmaddr && sections[j].size)
-                        firstSection=MIN(firstSection,sections[j].addr-seg->vmaddr);
+                for(unsigned j=0;j<seg->nsects;j++)if(sections[j].addr>=seg->vmaddr && sections[j].size)
+                    firstSection=MIN(firstSection,sections[j].addr-seg->vmaddr);
             }
         }
         cursor+=lc->cmdsize;
     }
-    if(cursor!=end || !uuidOK || textSize<JB_MappingOffset+sizeof(JB_Mapping) ||
-       JB_CaveOffset<end || JB_CaveOffset+sizeof(JB_Trampoline)>firstSection) return NO;
-    uint8_t *setter=(void *)(base+JB_SetterOffset), *cave=(void *)(base+JB_CaveOffset);
-    uint8_t *key=(void *)(base+JB_KeyCallOffset);
-    BOOL setterPatched=bytes(setter,JB_SetterPatched,4);
-    BOOL keyPatched=bytes(key,JB_KeyPatched,4);
-    uint8_t window[sizeof(JB_KeyOriginal)]; memcpy(window,base+JB_KeyWindowOffset,sizeof(window));
-    if(keyPatched) memcpy(window+(JB_KeyCallOffset-JB_KeyWindowOffset),JB_KeyOriginal+(JB_KeyCallOffset-JB_KeyWindowOffset),4);
-    uint8_t zero[sizeof(JB_Trampoline)]={0};
-    if(!bytes(base+JB_ProviderOffset,JB_Provider,sizeof(JB_Provider)) ||
+    if(textSize<JB_MappingOffset+sizeof(JB_Mapping) || textSize<JB_DlsymOffset+sizeof(JB_Dlsym) ||
+       JB_CaveOffset<end || JB_CaveOffset+sizeof(JB_Trampoline)>firstSection)return NO;
+    BOOL quota=bytes(base+JB_SetterOffset,JB_SetterPatched,4);
+    uint8_t zeros[512]={0};
+    if(!bytes(base+JB_SetterOffset+4,JB_SetterOriginal+4,sizeof(JB_SetterOriginal)-4) ||
+       (quota? !bytes(base+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline)):
+        (!bytes(base+JB_SetterOffset,JB_SetterOriginal,4)||!bytes(base+JB_CaveOffset,zeros,sizeof(JB_Trampoline)))))return NO;
+    BOOL keyZero=bytes(base+JB_KeyCallOffset,JB_KeyPatched,4);
+    BOOL keyObserved=bytes(base+JB_KeyCallOffset,SAPTraceRequestHead,4);
+    uint8_t window[sizeof(JB_KeyOriginal)];memcpy(window,base+JB_KeyWindowOffset,sizeof(window));
+    if(keyZero||keyObserved)memcpy(window+(JB_KeyCallOffset-JB_KeyWindowOffset),JB_KeyOriginal+(JB_KeyCallOffset-JB_KeyWindowOffset),4);
+    if(!bytes(window,JB_KeyOriginal,sizeof(window)) ||
+       !bytes(base+JB_ProviderOffset,JB_Provider,sizeof(JB_Provider)) ||
        !bytes(base+JB_MappingOffset,JB_Mapping,sizeof(JB_Mapping)) ||
-       !bytes(window,JB_KeyOriginal,sizeof(window)) ||
-       !bytes(setter+4,JB_SetterOriginal+4,sizeof(JB_SetterOriginal)-4) ||
-       (!setterPatched && !bytes(setter,JB_SetterOriginal,4)) ||
-       (setterPatched ? !bytes(cave,JB_Trampoline,sizeof(JB_Trampoline)) :
-         !bytes(cave,zero,sizeof(zero)))) return NO;
-    if((!setterPatched || !keyPatched) && !canWriteExecutable()) {
-        NSLog(@"[EeveeSpotify][NativeDownloads] Required executable patches missing and no jailbreak writer available; use a prepared IPA for sideloading");
-        return NO;
+       !bytes(base+JB_DlsymOffset,JB_Dlsym,sizeof(JB_Dlsym)))return NO;
+    const struct {uintptr_t entry,cave;const uint8_t *original,*head,*code;size_t originalSize,codeSize;} points[]={
+        {SAPTraceRequestOffset,SAPTraceRequestCaveOffset,SAPTraceRequestOriginal,SAPTraceRequestHead,SAPTraceRequestCode,sizeof(SAPTraceRequestOriginal),sizeof(SAPTraceRequestCode)},
+        {SAPTraceSuccessOffset,SAPTraceSuccessCaveOffset,SAPTraceSuccessOriginal,SAPTraceSuccessHead,SAPTraceSuccessCode,sizeof(SAPTraceSuccessOriginal),sizeof(SAPTraceSuccessCode)},
+        {SAPTraceFailureOffset,SAPTraceFailureCaveOffset,SAPTraceFailureOriginal,SAPTraceFailureHead,SAPTraceFailureCode,sizeof(SAPTraceFailureOriginal),sizeof(SAPTraceFailureCode)},
+    };
+    BOOL observed[3];
+    for(unsigned i=0;i<3;i++) {
+        if(points[i].entry+points[i].originalSize>textSize || points[i].cave<end ||
+           points[i].cave+points[i].codeSize>firstSection || points[i].codeSize>sizeof(zeros))return NO;
+        observed[i]=bytes(base+points[i].entry,points[i].head,4);
+        if(observed[i]) {
+            if(!bytes(base+points[i].entry+4,points[i].original+4,points[i].originalSize-4)||
+               !bytes(base+points[i].cave,points[i].code,points[i].codeSize))return NO;
+        }else if((i==0?!keyZero&&!bytes(base+JB_KeyCallOffset,JB_KeyOriginal+(JB_KeyCallOffset-JB_KeyWindowOffset),4):
+                 !bytes(base+points[i].entry,points[i].original,points[i].originalSize))||
+                 !bytes(base+points[i].cave,zeros,points[i].codeSize))return NO;
     }
-    if(!apply) return YES; // Read-only preflight during dylib initialization.
-    // Preflight every guard before changing anything. Cave first, branch second.
-    if(!setterPatched) {
-        if(!writeCode(cave,JB_Trampoline,sizeof(JB_Trampoline))) {
-            writeCode(cave,zero,sizeof(zero));
-            return NO;
-        }
-        if(!writeCode(setter,JB_SetterPatched,4)) {
-            // Restore the branch before removing its destination.
-            if(writeCode(setter,JB_SetterOriginal,4)) writeCode(cave,zero,sizeof(zero));
-            return NO;
-        }
+    // Every destination is validated before writing. Install all leaf stubs
+    // before branches, then roll back branches before removing their stubs.
+    struct NativeCodeChange changes[8];unsigned count=0;
+#define ADD_CHANGE(at,data,n) do { \
+    changes[count].target=base+(at);changes[count].size=(n);changes[count].after=(data); \
+    memcpy(changes[count].before,base+(at),(n));count++; \
+} while(0)
+    if(!quota)ADD_CHANGE(JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline));
+    for(unsigned i=0;i<3;i++)if(!observed[i])ADD_CHANGE(points[i].cave,points[i].code,points[i].codeSize);
+    if(!quota)ADD_CHANGE(JB_SetterOffset,JB_SetterPatched,4);
+    for(unsigned i=0;i<3;i++)if(!observed[i])ADD_CHANGE(points[i].entry,points[i].head,4);
+#undef ADD_CHANGE
+    if(count && !canWriteExecutable()) {
+        NSLog(@"[EeveeSpotify][Sprite] Executable preparation unavailable; install the prepared IPA or matching jailbreak package");return NO;
     }
-    if(!keyPatched && !writeCode(key,JB_KeyPatched,4)) {
-        writeCode(key,JB_KeyOriginal+(JB_KeyCallOffset-JB_KeyWindowOffset),4);
-        if(!setterPatched && writeCode(setter,JB_SetterOriginal,4)) writeCode(cave,zero,sizeof(zero));
+    if(!apply)return YES;
+    for(unsigned i=0;i<count;i++)if(!writeCode(changes[i].target,changes[i].after,changes[i].size)) {
+        for(int j=(int)i;j>=0;j--)writeCode(changes[j].target,changes[j].before,changes[j].size);
         return NO;
     }
 #ifndef SAP_JB_TEST
@@ -195,7 +205,7 @@ static void activateForManager(void) {
     dispatch_once(&once, ^{
         BOOL installed=install();
         atomic_store_explicit(&ready,installed,memory_order_release);
-        NSLog(@"[EeveeSpotify][NativeDownloads] v7.3 jailbreak adapter %@ at offline-manager initialization",installed?@"ready":@"inactive");
+        NSLog(@"[EeveeSpotify][NativeDownloads] Sprite v1 native adapter %@ at offline-manager initialization",installed?@"ready":@"inactive");
     });
 }
 

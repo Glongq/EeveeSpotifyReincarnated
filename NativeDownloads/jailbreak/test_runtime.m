@@ -15,7 +15,7 @@ BOOL JBTestWrite(void *p,const void *data,size_t size) {
     memcpy(p,data,size); return YES;
 }
 static uint8_t *fixture(void) {
-    size_t n=JB_MappingOffset+4096;
+    size_t n=JB_DlsymOffset+4096;
     uint8_t *p=mmap(NULL,n,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);
     assert(p!=MAP_FAILED);
     struct mach_header_64 *h=(void *)p;
@@ -29,12 +29,15 @@ static uint8_t *fixture(void) {
     memcpy(p+JB_KeyWindowOffset,JB_KeyOriginal,sizeof(JB_KeyOriginal));
     memcpy(p+JB_ProviderOffset,JB_Provider,sizeof(JB_Provider));
     memcpy(p+JB_MappingOffset,JB_Mapping,sizeof(JB_Mapping));
+    memcpy(p+JB_DlsymOffset,JB_Dlsym,sizeof(JB_Dlsym));
+    memcpy(p+SAPTraceSuccessOffset,SAPTraceSuccessOriginal,sizeof(SAPTraceSuccessOriginal));
+    memcpy(p+SAPTraceFailureOffset,SAPTraceFailureOriginal,sizeof(SAPTraceFailureOriginal));
     JBTestHeader=(void *)p; writes=0;failWrite=0;JBTestWriterAvailable=YES;return p;
 }
-static void releaseImage(uint8_t *p) {munmap(p,JB_MappingOffset+4096);}
+static void releaseImage(uint8_t *p) {munmap(p,JB_DlsymOffset+4096);}
 static unsigned initialized;
 static void *originalManagerInit(void *object,SEL selector,void *scheduler,void *manager,void *sync,void *metadata) {
-    assert(writes==3 && EeveeNativeDownloadsIsReady());
+    assert(writes==8 && EeveeNativeDownloadsIsReady());
     assert(scheduler==(void *)1 && manager==(void *)2 && sync==(void *)3 && metadata==(void *)4);
     initialized++;return object;
 }
@@ -59,26 +62,26 @@ int main(void) {
     p[sizeof(struct mach_header_64)+8]^=0x80;
     assert(!spotifyIdentity((const void *)p)); // A host/different UUID is skipped.
     p[sizeof(struct mach_header_64)+8]^=0x80;
-    assert(install());assert(writes==3);
-    assert(!memcmp(p+JB_KeyCallOffset,JB_KeyPatched,4));
+    assert(install());assert(writes==8);
+    assert(!memcmp(p+JB_KeyCallOffset,SAPTraceRequestHead,4));
     assert(!memcmp(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline)));
-    assert(install());assert(writes==3);releaseImage(p);
+    assert(install());assert(writes==8);releaseImage(p);
     p=fixture();JBTestWriterAvailable=NO;
     assert(!prepare(NO) && !install() && writes==0);releaseImage(p);
-    p=fixture();JBTestWriterAvailable=NO;
-    memcpy(p+JB_SetterOffset,JB_SetterPatched,4);
-    memcpy(p+JB_CaveOffset,JB_Trampoline,sizeof(JB_Trampoline));
-    memcpy(p+JB_KeyCallOffset,JB_KeyPatched,4);
+    p=fixture();assert(install());writes=0;JBTestWriterAvailable=NO;
     assert(prepare(NO) && install() && writes==0);releaseImage(p);
-    const size_t corrupt[]={sizeof(struct mach_header_64)+8,JB_SetterOffset,JB_CaveOffset,JB_KeyWindowOffset,JB_ProviderOffset,JB_MappingOffset};
+    const size_t corrupt[]={sizeof(struct mach_header_64)+8,JB_SetterOffset,JB_CaveOffset,JB_KeyWindowOffset,JB_ProviderOffset,JB_MappingOffset,JB_DlsymOffset,SAPTraceSuccessOffset,SAPTraceFailureOffset};
     for(unsigned i=0;i<sizeof(corrupt)/sizeof(*corrupt);i++) {
         p=fixture();p[corrupt[i]]^=0x80;assert(!install());assert(writes==0);releaseImage(p);
     }
-    for(unsigned failure=1;failure<=3;failure++) {
+    for(unsigned failure=1;failure<=8;failure++) {
         p=fixture();failWrite=failure;assert(!install());
         assert(!memcmp(p+JB_SetterOffset,JB_SetterOriginal,sizeof(JB_SetterOriginal)));
         assert(!memcmp(p+JB_KeyWindowOffset,JB_KeyOriginal,sizeof(JB_KeyOriginal)));
         uint8_t zero[sizeof(JB_Trampoline)]={0};assert(!memcmp(p+JB_CaveOffset,zero,sizeof(zero)));
+        assert(!memcmp(p+SAPTraceSuccessOffset,SAPTraceSuccessOriginal,sizeof(SAPTraceSuccessOriginal)));
+        assert(!memcmp(p+SAPTraceFailureOffset,SAPTraceFailureOriginal,sizeof(SAPTraceFailureOriginal)));
+        assert(prepare(NO)); // Every partial write restored all guards and padding.
         releaseImage(p);
     }
     p=fixture();
@@ -91,9 +94,9 @@ int main(void) {
     id instance=[cls alloc];
     void *(*init)(void *,SEL,void *,void *,void *,void *)=(void *)class_getMethodImplementation(cls,selector);
     assert(init((__bridge void *)instance,selector,(void *)1,(void *)2,(void *)3,(void *)4)==(__bridge void *)instance);
-    assert(writes==3 && initialized==1 && EeveeNativeDownloadsIsReady());
+    assert(writes==8 && initialized==1 && EeveeNativeDownloadsIsReady());
     assert(init((__bridge void *)instance,selector,(void *)1,(void *)2,(void *)3,(void *)4)==(__bridge void *)instance);
-    assert(writes==3 && initialized==2);releaseImage(p);
+    assert(writes==8 && initialized==2);releaseImage(p);
     puts("PASS: v7 guards, idempotency, incompatible images, and partial-write rollback");
     puts("PASS: zero executable writes during startup/preflight; manager event applies once before original init; arguments and result preserved");
 }

@@ -34,7 +34,7 @@ SPOT_VERSION=$(unzip -p "$VANILLA_IPA" 'Payload/Spotify.app/Info.plist' \
 OUT_DIR="Outputs/IPAS"
 OUT_IPA="$OUT_DIR/EeveeSpotify-${VERSION}-${SPOT_VERSION}.ipa"
 if [ "${NATIVE_DOWNLOADS:-1}" = "1" ]; then
-    OUT_IPA="$OUT_DIR/Spotify-${SPOT_VERSION}-Eevee+Sprite.ipa"
+    OUT_IPA="$OUT_DIR/Spotify-${SPOT_VERSION}-Eevee-Pixie-v1.ipa"
 fi
 mkdir -p "$OUT_DIR"
 

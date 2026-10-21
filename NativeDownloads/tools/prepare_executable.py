@@ -8,7 +8,7 @@ import patch_native_restrictions as limits
 import patch_key_request_mode as keys
 
 
-def prepare(data):
+def prepare_download_patches(data):
     _, _, segments, uuid = limits.layout(data)
     if uuid != limits.UUID:
         raise ValueError('Unsupported Spotify UUID')
@@ -41,3 +41,12 @@ def prepare(data):
     return result, {'quota': quota_report, 'key': key_report,
                     'input_quota_patched': quota_patched, 'input_key_patched': key_patched,
                     'executable_patches_ready': True}
+
+
+def prepare(data):
+    from patch_native_trace import normalize, patch
+    normalized = normalize(data)
+    result, report = prepare_download_patches(normalized)
+    result, observation = patch(result)
+    report['native_observation'] = observation
+    return result, report

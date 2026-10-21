@@ -24,10 +24,12 @@ with tempfile.TemporaryDirectory(prefix='eevee-v7-deb-') as folder:
     frameworks=list(root.rglob('EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf'))
     assert len(frameworks)==1
     text=run('strings',dylib)
-    for marker in ('v7.3 jailbreak adapter','Sprite Download Manager','SAPDownloadsSettings', 'offline-quota', 'native_patches_missing', 'executable_patches_ready'):
+    for marker in ('Sprite v1 native adapter','Pixie Download Manager','SAPDownloadsSettings', 'offline-quota', 'native_patches_missing', 'executable_patches_ready'):
         assert marker in text,marker
+    data=dylib.read_bytes()
+    assert any('Eevee-Pixie v1'.encode(encoding) in data for encoding in ('utf-8','utf-16-le'))
     symbols=run('nm','-g',dylib)
-    for symbol in ('_EeveeNativeDownloadsIsReady','_EeveeNativeDownloadsWillHandleDownloads','_SpotifyAudioProbeInitialize','_AudioUnitSetProperty','_AudioOutputUnitStart'):
+    for symbol in ('_EeveeNativeDownloadsIsReady','_EeveeNativeDownloadsWillHandleDownloads','_SpotifyAudioProbeInitialize','_AudioUnitSetProperty','_AudioOutputUnitStart','_SAPTraceNativeBoundary'):
         assert re.search(r'\bT '+symbol+r'$',symbols,re.M),symbol
     dependencies=run('otool','-L',dylib)
     assert 'EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf' in dependencies

@@ -6,8 +6,8 @@ cd "$ROOT"
 : "${THEOS_ROOTLESS:?Set THEOS_ROOTLESS to a standard Theos checkout}"
 : "${THEOS_ROOTHIDE:?Set THEOS_ROOTHIDE to a RootHide Theos checkout}"
 MAKE="${MAKE:-gmake}"
-VERSION="${PACKAGE_VERSION:-7.0.0+native.v7.3}"
-OUTPUT="$ROOT/NativeDownloads/outputs/jailbreak-v7.3"
+VERSION="${PACKAGE_VERSION:-7.0.0+sprite.v1-2}"
+OUTPUT="$ROOT/NativeDownloads/outputs/pixie-v1"
 mkdir -p "$OUTPUT"
 python3 NativeDownloads/jailbreak/generate_guards.py --check
 python3 NativeDownloads/tools/test_patchers.py
@@ -25,7 +25,7 @@ for scheme in rootless roothide; do
     if [ "$scheme" = rootless ]; then arch=iphoneos-arm64; else arch=iphoneos-arm64e; fi
     source="packages/com.eevee.spotify_${VERSION}_${arch}.deb"
     test -f "$source"
-    target="$OUTPUT/spotify-v7.3-$scheme.deb"
+    target="$OUTPUT/Spotify-9.1.88-Eevee-Pixie-v1-$scheme.deb"
     cp "$source" "$target"
     python3 NativeDownloads/jailbreak/verify_deb.py "$target" "$scheme"
 done

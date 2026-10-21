@@ -15,7 +15,9 @@ out=root/'build/ui-v4'
 app=out/'SpotifySettingsPreview.app'
 app.mkdir(parents=True,exist_ok=True)
 def run(*args,check=True):
- p=subprocess.run([str(x) for x in args],cwd=root,check=check,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=45)
+ p=subprocess.run([str(x) for x in args],cwd=root,check=False,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=45)
+ if check and p.returncode:
+  print(p.stdout,flush=True);p.check_returncode()
  return p.stdout.strip()
 devices=json.loads(run('xcrun','simctl','list','devices','--json'))['devices']
 booted=[d for ds in devices.values() for d in ds if d['state']=='Booted' and d.get('isAvailable') and 'iPhone' in d['name']]
@@ -23,10 +25,10 @@ assert booted,'Boot an iPhone simulator first'
 udid=booted[0]['udid']
 sdk=run('xcrun','--sdk','iphonesimulator','--show-sdk-path')
 objects=[]
-for src in ['src/DownloadSettingsUI.m','src/Diagnostics.m','src/Localization.m','tests/SettingsFixtureActions.m']:
+for src in ['src/DownloadSettingsUI.m','src/Diagnostics.m','src/Localization.m','src/DiagnosticTrace.m','src/NativeKeyTrace.m','src/WireProto.m','tests/trace_platform_stub.m','tests/SettingsFixtureActions.m']:
  obj=out/(Path(src).stem+'.o');objects.append(obj)
- run('xcrun','clang','-c','-target','arm64-apple-ios27.0-simulator','-isysroot',sdk,'-fobjc-arc','-std=gnu11','-Isrc','-DSAP_UI_FIXTURE',src,'-o',obj)
-run('xcrun','swiftc','-swift-version','5','-parse-as-library','-target','arm64-apple-ios27.0-simulator','-sdk',sdk,'-import-objc-header','src/AudioProbeUI.h','tests/SettingsFixture.swift',*objects,'-framework','UIKit','-framework','SwiftUI','-o',app/'SpotifySettingsPreview')
+ run('xcrun','clang','-c','-target','arm64-apple-ios27.0-simulator','-isysroot',sdk,'-fobjc-arc','-std=gnu11','-Isrc','-DSAP_UI_FIXTURE','-DSAP_TESTING',src,'-o',obj)
+run('xcrun','swiftc','-swift-version','5','-parse-as-library','-target','arm64-apple-ios27.0-simulator','-sdk',sdk,'-import-objc-header','tests/SettingsFixtureBridge.h','tests/SettingsFixture.swift',*objects,'-framework','UIKit','-framework','SwiftUI','-o',app/'SpotifySettingsPreview')
 bundle='local.spotify.settingspreview.v4'
 info={'CFBundleIdentifier':bundle,'CFBundleExecutable':'SpotifySettingsPreview','CFBundleName':'Settings Preview','CFBundleVersion':'24','CFBundleShortVersionString':'24','CFBundlePackageType':'APPL','CFBundleLocalizations':['ru','en'],'CFBundleDevelopmentRegion':'en','LSRequiresIPhoneOS':True,'UIDeviceFamily':[1],'UILaunchScreen':{},'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':False,'UISceneConfigurations':{'UIWindowSceneSessionRoleApplication':[{'UISceneConfigurationName':'Default','UISceneDelegateClassName':'SAPFixtureSceneDelegate'}]}},'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait']}
 (app/'Info.plist').write_bytes(plistlib.dumps(info))
@@ -37,13 +39,15 @@ for language in ['ru','en']:
  container=Path(run('xcrun','simctl','get_app_container',udid,bundle,'data'))
  result=container/'Documents/result.log';result.unlink(missing_ok=True)
  print(run('xcrun','simctl','launch',udid,bundle,'-AppleLanguages','('+language+')'),flush=True)
- deadline=time.monotonic()+20
+ deadline=time.monotonic()+35
  while time.monotonic()<deadline:
   text=result.read_text() if result.exists() else ''
   if 'PASS: entry spacing, mini-player clearance, navigation and native pages rendered' in text:break
   time.sleep(.3)
  else:raise RuntimeError('Fixture did not complete: '+text)
  assert 'PASS: legacy and module-qualified native page protocols;' in text
+ assert 'PASS: every action remains tappable after repeated reuse of the disabled mode row' in text
+ assert 'PASS: original slot dialogs success/error/dismissal repeated; every visible menu action is hittable and status navigation works' in text
  target=out/language;target.mkdir(exist_ok=True)
  for file in (container/'Documents').iterdir():
   if file.suffix in ['.log','.png']:shutil.copy2(file,target/file.name)

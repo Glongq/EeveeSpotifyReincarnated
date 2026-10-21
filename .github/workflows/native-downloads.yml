@@ -1,4 +1,4 @@
-name: Native Downloads — Validate / Build IPA
+name: Pixie Download Manager — Validate / Build IPA
 
 on:
   push:
@@ -64,9 +64,9 @@ jobs:
           python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa" "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
-          name: spotify-ui-v7.3-native-downloads
+          name: eevee-pixie-v1-native-downloads
           if-no-files-found: error
           retention-days: 7
           path: |
-            NativeDownloads/outputs/Spotify-9.1.88-Eevee+Sprite.ipa
+            NativeDownloads/outputs/Spotify-9.1.88-Eevee-Pixie-v1.ipa
             NativeDownloads/outputs/build-manifest.json

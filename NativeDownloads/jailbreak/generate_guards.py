@@ -15,10 +15,10 @@ def source():
         ('JB_Trampoline',r.trampoline()), ('JB_KeyOriginal',k.ORIGINAL),
         ('JB_Provider',k.PROVIDER_HEAD), ('JB_Mapping',k.MAPPING_BYTES),
         ('JB_SetterPatched',r.branch(r.SETTER,r.CAVE).to_bytes(4,'little')),
-        ('JB_KeyPatched',bytes.fromhex('02008052'))]:
+        ('JB_KeyPatched',bytes.fromhex('02008052')), ('JB_Dlsym',k.DLSYM_STUB_HEAD)]:
         out += array(name,data)
     for name, address in [('Setter',r.SETTER),('Cave',r.CAVE),('KeyWindow',k.WINDOW),
-        ('KeyCall',k.CALL_SITE),('Provider',k.PROVIDER),('Mapping',k.MAPPING)]:
+        ('KeyCall',k.CALL_SITE),('Provider',k.PROVIDER),('Mapping',k.MAPPING),('Dlsym',k.DLSYM_STUB)]:
         out += f'#define JB_{name}Offset {hex(address-r.PREFERRED)}UL\n'
     return out
 

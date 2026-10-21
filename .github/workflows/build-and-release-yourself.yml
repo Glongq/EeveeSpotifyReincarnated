@@ -141,7 +141,7 @@ jobs:
           python3 NativeDownloads/tools/prepare_ipa.py "$OUT_IPA" "${OUT_IPA%.ipa}-native.ipa" --if-native
           PREPARED="${OUT_IPA%.ipa}-native.ipa"
           if python3 -c 'import json,sys; sys.exit(not json.load(open(sys.argv[1]))["native_core"])' "${OUT_IPA%.ipa}-native.build.json"; then
-            OUT_IPA="Outputs/IPAS/Spotify-9.1.88-Eevee+Sprite.ipa"
+            OUT_IPA="Outputs/IPAS/Spotify-9.1.88-Eevee-Pixie-v1.ipa"
             echo "OUT_IPA=$OUT_IPA" >> "$GITHUB_ENV"
           fi
           mv "$PREPARED" "$OUT_IPA"

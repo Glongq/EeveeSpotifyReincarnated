@@ -15,6 +15,10 @@ void SAPPrepareNativeOffline(BOOL (^requested)(void),void (^completion)(BOOL,NSS
     });
 }
 void SAPReadNativeTrackState(NSString *uri) {}
+void SAPRequestNativeAlbumDownload(NSString *uri, void (^completion)(BOOL, NSString *)) {
+    if (completion) completion(YES, @"test album request");
+}
+NSUInteger SAPObservedAudioKeyCount(void) { return 0; }
 void SAPJournalVerifyTrack(NSString *uri,void (^completion)(NSDictionary *)) {if(completion)completion(nil);}
 NSDictionary *SAPNativeOfflineReport(void) { return @{@"test_stub":@YES}; }
 // Журнал здесь подменён: проверяем, что транспортный хук отдаёт ему каждый вызов
@@ -22,6 +26,7 @@ NSDictionary *SAPNativeOfflineReport(void) { return @{@"test_stub":@YES}; }
 static NSMutableArray *journalObserved;
 static SAPJournalCaller journalCaller;
 static unsigned journalRefreshes;
+void SAPJournalNoteAction(NSString *name,NSDictionary *facts) {}
 void SAPJournalObserveCall(NSString *method, NSData *request, NSData *response, NSString *source) {
     if (!journalObserved) journalObserved = [NSMutableArray array];
     [journalObserved addObject:@{@"method": method ?: @"", @"request": @(request.length),
@@ -72,6 +77,8 @@ static unsigned journalSaw(NSString *method) {
 @end
 @interface SPTEsperantoTransportBridgeImpl : NSObject
 @property(nonatomic) unsigned scenario, queries, requests, removes;
+@property(nonatomic) unsigned commandBehavior, commandCount;
+@property(nonatomic,copy) void (^commandLateCallback)(NSData *);
 @property(nonatomic, copy) NSString *requested;
 @property(nonatomic, copy) void (^lateCallback)(NSData *);
 @property(nonatomic, copy) BOOL (^errorCallback)(NSData *);
@@ -90,6 +97,13 @@ static NSData *join(NSData *a, NSData *b) { NSMutableData *d = [a mutableCopy]; 
     if ([method isEqual:@"warmup"]) return nil;
     if (self.scenario == 12) return nil; // Wrong/stale native channel: never answers.
     assert([service isEqual:@"spotify.offline_esperanto.proto.Offline"]);
+    if([method isEqual:@"SetOfflinePlaybackAllowed"]) {
+        self.commandCount++;assert([payload isEqual:SAPProtoInteger(1,1)]);
+        if(self.commandBehavior==1)self.commandLateCallback=callback;
+        else if(self.commandBehavior==2)callback(nil);
+        else callback(SAPProtoInteger(1,1));
+        return [FakeLifetime new];
+    }
     if ([method isEqual:@"GetOfflinePlaybackStatus"]) {
         callback([NSData dataWithBytes:(uint8_t[]){0x08,0x01} length:2]);
     } else if ([method isEqual:@"AddDownload"] || [method isEqual:@"RemoveDownload"]) {
@@ -309,5 +323,27 @@ int main(void) { @autoreleasepool {
     SAPCancelTrackDownload();waitFor(^BOOL{return !SAPTrackDownloadActive();});assert(t.removes==oldRemoves+1);
     SAPDiagnosticsSetEnabled(true);
     puts("PASS: diagnostics OFF keeps native download and completion; toggling OFF does not cancel the track");
+    // Unlike read-only requests, explicit mutations must never fall back to a
+    // second transport, including after a timeout or invalid response.
+    reset(t,0);
+    __block BOOL answered=NO;
+    SAPCallReadOnlyService(@"spotify.offline_esperanto.proto.Offline",@"GetOfflinePlaybackStatus",NSData.data,^(NSData *d,NSString *e){assert(d && !e);answered=YES;});
+    waitFor(^BOOL{return answered;});
+    for(unsigned behavior=0;behavior<3;behavior++) {
+        t.commandBehavior=behavior;unsigned before=t.commandCount;__block unsigned completions=0;
+        SAPCallOfflineCommandOnce(@"SetOfflinePlaybackAllowed",SAPProtoInteger(1,1),^(NSData *d,NSString *e){
+            assert(behavior==0?(d!=nil && e==nil):(d==nil && e!=nil));completions++;
+        });
+        waitFor(^BOOL{return completions==1;});assert(t.commandCount==before+1 && cosmos.commandCount==0 && bad.commandCount==0);
+        if(behavior==1){t.commandLateCallback(SAPProtoInteger(1,1));
+            NSDate *until=[NSDate dateWithTimeIntervalSinceNow:0.08];
+            while(until.timeIntervalSinceNow>0)[NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.002]];
+            assert(completions==1 && t.commandCount==before+1);
+        }
+    }
+    unsigned before=t.commandCount;answered=NO;
+    SAPCallOfflineCommandOnce(@"UnknownMutation",NSData.data,^(NSData *d,NSString *e){assert(!d && e);answered=YES;});
+    waitFor(^BOOL{return answered;});assert(t.commandCount==before);
+    puts("PASS: explicit enable uses one proven endpoint once; timeout/invalid/late replies never replay it; unknown mutations are rejected");
     puts("PASS: native preparation failure/cancellation; native transport/descriptor routing; exact one-track wire request; journal observation of every Offline call; actual rejection codes vs no response; independent item-state completion; transient/incorrect/nil responses; cached track; cancellation; stale callback; no idle polling");
 } }

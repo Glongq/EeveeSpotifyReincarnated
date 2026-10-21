@@ -11,6 +11,7 @@ from patch_imports import patch
 from patch_offline import patch_reminder
 from patch_native_restrictions import patch as patch_native_restrictions, guard_header, limits_header
 from patch_key_request_mode import patch as patch_key_request_mode
+from prepare_executable import prepare
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "outputs"
@@ -25,7 +26,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build the UI release and native-download overlay for the guarded Spotify 9.1.88 binary.")
     parser.add_argument("ipa", type=Path, help="An unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 IPA supplied by you")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT)
-    parser.add_argument("--provenance", type=Path, default=ROOT / "provenance-ui-v7.3.json")
+    parser.add_argument("--provenance", type=Path, default=ROOT / "provenance-pixie-v1.json")
     parser.add_argument("--eevee-dylib", type=Path, help="EeveeSpotify.dylib compiled from the current UI sources; otherwise use the input IPA's Eevee library")
     args = parser.parse_args()
     source = args.ipa.expanduser().resolve()
@@ -50,7 +51,7 @@ def main():
             raise RuntimeError("Only the checked Spotify 9.1.88 binary is supported")
         # Validate all native guards and the Eevee target before compilation.
         app = plist.rsplit("/", 1)[0]
-        patch_key_request_mode(patch_native_restrictions(check.read(f"{app}/{info['CFBundleExecutable']}"))[0])
+        prepare(check.read(f"{app}/{info['CFBundleExecutable']}"))
         if eevee_input is None:
             eevee_input = check.read(f"{app}/Frameworks/EeveeSpotify.dylib")
         if b'EeveeNativeDownloadsWillHandleDownloads' in eevee_input:
@@ -67,12 +68,13 @@ def main():
     if (ROOT / "src/OfflineLimits.h").read_text() != limits_header():
         raise RuntimeError("Offline limit constants differ from the binary patch")
     library = output / "SpotifyAudioProbe.dylib"
-    run("xcrun", "clang", "-dynamiclib", "-arch", "arm64", "-target", "arm64-apple-ios15.0",
+    sources = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "src").iterdir() if p.suffix in (".m", ".c"))
+    run("xcrun", "clang", "-dynamiclib", "-arch", "arm64", "-target", "arm64-apple-ios16.1",
         "-isysroot", sdk, "-fobjc-arc", "-std=gnu11", "-O2", "-fvisibility=hidden",
         "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-nullability-completeness",
         "-Werror=implicit-function-declaration", "-Isrc", "-DSAP_ENABLE_WAV_CAPTURE=0",
-        "src/AudioProbe.c", "src/Diagnostics.m", "src/Localization.m", "src/CaptureRing.c", "src/AVAudioHooks.m", "src/SourceGraph.c", "src/OfflineFlags.m", "src/WireProto.m", "src/OfflineConfig.m", "src/TrackJournal.m", "src/NativeErrorLog.m", "src/PlayerTrace.m", "src/NativeOffline.m", "src/TrackDownload.m", "src/AudioProbeUI.m", "src/DownloadSettingsUI.m",
-        "-framework", "AudioToolbox", "-framework", "Foundation", "-framework", "UIKit", "-framework", "AVFAudio", "-framework", "CoreGraphics", "-framework", "AVFoundation", "-framework", "CoreMedia",
+        *sources,
+        "-framework", "AudioToolbox", "-framework", "Foundation", "-framework", "UIKit", "-framework", "AVFAudio", "-framework", "CoreGraphics", "-framework", "AVFoundation", "-framework", "CoreMedia", "-framework", "Network",
         "-Wl,-install_name,@rpath/SpotifyAudioProbe.dylib", "-o", library)
     run("codesign", "--force", "--sign", "-", "--timestamp=none", library)
     with ZipFile(source) as original:
@@ -82,10 +84,8 @@ def main():
         app = plist.rsplit("/", 1)[0]
         executable = f"{app}/{info['CFBundleExecutable']}"
         binary, manifest = patch(original.read(executable))
-        binary, native_patch = patch_native_restrictions(binary)
-        manifest["native_restriction_guard"] = native_patch
-        binary, key_patch = patch_key_request_mode(binary)
-        manifest["native_key_request_mode"] = key_patch
+        binary, native_patch = prepare(binary)
+        manifest["native_preparation"] = native_patch
         staged = BUILD / info["CFBundleExecutable"]
         staged.write_bytes(binary)
         staged.chmod(0o755)
@@ -104,7 +104,7 @@ def main():
         run("codesign", "--verify", "--strict", patched_eevee)
         run("xcrun", "dyld_info", "-validate_only", patched_eevee)
         manifest["offline_reminder_patch"] = reminder
-        archive = output / provenance.get("ipa_filename", "Spotify-9.1.88-Eevee+Sprite.ipa")
+        archive = output / provenance["ipa_filename"]
         if archive.resolve() == source:
             raise RuntimeError("Output must differ from the input IPA")
         with ZipFile(archive, "w", allowZip64=True) as updated:

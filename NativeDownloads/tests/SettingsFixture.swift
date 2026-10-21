@@ -1,6 +1,13 @@
 import UIKit
 import SwiftUI
 
+private final class ReusingSettingsTable: UITableView {
+ var recycled: UITableViewCell?
+ override func dequeueReusableCell(withIdentifier identifier: String) -> UITableViewCell? {
+  recycled ?? super.dequeueReusableCell(withIdentifier:identifier)
+ }
+}
+
 private struct LabelRow: View {
  let title: String
  let subtitle: String?
@@ -90,7 +97,7 @@ class ChromeHost:UIViewController {
    list.setContentOffset(CGPoint(x:0,y:max(-list.adjustedContentInset.top,list.contentSize.height-list.bounds.height+list.adjustedContentInset.bottom)),animated:false)
    DispatchQueue.main.asyncAfter(deadline:.now()+0.7){
     self.capture("root-settings")
-    let cellRect=entry.convert(entry.rectForRow(at:IndexPath(row:0,section:0)),to:window)
+    let cellRect=entry.convert(entry.rectForRow(at:IndexPath(row:1,section:0)),to:window)
     let miniTop=chrome.mini.view.convert(chrome.mini.view.bounds,to:window).minY
     self.write("root last row bottom=\(cellRect.maxY); mini top=\(miniTop)")
     precondition(cellRect.maxY<=miniTop-10,"root row under mini-player")
@@ -103,20 +110,45 @@ class ChromeHost:UIViewController {
     DispatchQueue.main.asyncAfter(deadline:.now()+0.8){
      self.capture("downloads-top")
      guard let page=nav.topViewController as? UITableViewController else{return}
-     precondition(page.tableView.numberOfSections==3)
-     let english=ProcessInfo.processInfo.arguments.contains("(en)")
-     precondition(page.title==(english ? "Track downloads" : "Загрузки треков"),"wrong app language")
-     for section in 0..<3 {for row in 0..<page.tableView.numberOfRows(inSection:section) {
+     precondition(page.tableView.numberOfSections==5)
+     precondition(page.tableView.numberOfRows(inSection:1)==4,"quota/license/device rows missing")
+     let modeCell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:0,section:1))
+     precondition((modeCell.contentConfiguration as? UIListContentConfiguration)?.text=="Configured request mode","selected mode must not be presented as verified execution")
+     precondition(!modeCell.isUserInteractionEnabled,"mode 0 must be read-only")
+     let reuseTable=ReusingSettingsTable(frame:.zero,style:.insetGrouped)
+     let disabled=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:0,section:1))
+     precondition(!disabled.isUserInteractionEnabled)
+     reuseTable.recycled=disabled
+     for _ in 0..<3 {for section in 0..<page.tableView.numberOfSections {for row in 0..<page.tableView.numberOfRows(inSection:section) {
+      if section==1 && row==0 {continue}
+      _=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:0,section:1))
+      precondition(!disabled.isUserInteractionEnabled,"mode row must remain read-only")
+      let action=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:row,section:section))
+      precondition(action === disabled && action.isUserInteractionEnabled && action.selectionStyle == .default,"recycled read-only mode cell disabled an action")
+     }}}
+     self.write("PASS: every action remains tappable after repeated reuse of the disabled mode row")
+     let modeFooter=page.tableView.dataSource!.tableView?(page.tableView,titleForFooterInSection:1) ?? ""
+     precondition(modeFooter.contains("Device registrations control offline access on copies of Spotify."))
+     precondition(!modeFooter.lowercased().contains("recovery"))
+     let refreshCell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:1,section:1))
+     precondition((refreshCell.contentConfiguration as? UIListContentConfiguration)?.text=="Refresh quotas and licenses")
+     for (row,title) in [(2,"Manage offline device slots"),(3,"Enable offline listening on this copy")] {
+      let cell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:row,section:1))
+      precondition((cell.contentConfiguration as? UIListContentConfiguration)?.text==title)
+     }
+     precondition(page.title=="Pixie Download Manager","Pixie must remain in English")
+     for section in 0..<page.tableView.numberOfSections {for row in 0..<page.tableView.numberOfRows(inSection:section) {
       let cell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:row,section:section))
       if let content=cell.contentConfiguration as? UIListContentConfiguration {
        precondition(!(content.text ?? "").contains("WAV"),"WAV row still present")
        precondition(!(content.text ?? "").contains("Заглушить") && !(content.text ?? "").contains("Mute audio"),"mute row still present")
+       precondition(!(content.text ?? "").contains("Export") && !(content.text ?? "").contains("Send log"),"duplicate log export row")
       }
      }}
-     page.tableView.setContentOffset(CGPoint(x:0,y:max(0,page.tableView.contentSize.height-page.tableView.bounds.height+page.tableView.adjustedContentInset.bottom)),animated:false)
+     self.exerciseSlots(page:page,nav:nav) {
+     page.tableView.scrollToRow(at:IndexPath(row:0,section:3),at:.middle,animated:false)
      DispatchQueue.main.asyncAfter(deadline:.now()+0.5){
-      self.capture("downloads-bottom")
-      let togglePath=IndexPath(row:0,section:2)
+      let togglePath=IndexPath(row:0,section:3)
       if let toggle=page.tableView.cellForRow(at:togglePath)?.accessoryView as? UISwitch {
        precondition(!toggle.isOn,"diagnostics must default off")
        toggle.isOn=true;toggle.sendActions(for:.valueChanged)
@@ -126,14 +158,57 @@ class ChromeHost:UIViewController {
        self.write("PASS: legacy and module-qualified native page protocols; diagnostics switch defaults OFF and toggles ON/OFF")
       } else {preconditionFailure("diagnostics switch not visible")}
 
-      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:2,section:2)),to:window)
+      page.tableView.setContentOffset(CGPoint(x:0,y:max(0,page.tableView.contentSize.height-page.tableView.bounds.height+page.tableView.adjustedContentInset.bottom)),animated:false)
+      page.tableView.layoutIfNeeded()
+      self.capture("downloads-bottom")
+      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:1,section:4)),to:window)
       self.write("downloads last row bottom=\(last.maxY); mini top=\(miniTop); inset=\(page.tableView.contentInset)")
       precondition(last.maxY<=miniTop-10,"downloads row under mini-player")
-      page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:1,section:2))
+      page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:1,section:3))
       DispatchQueue.main.asyncAfter(deadline:.now()+0.7){self.capture("diagnostics");self.write("PASS: entry spacing, mini-player clearance, navigation and native pages rendered")}
+     }
      }
     }
    }
+  }
+ }
+ @MainActor func exerciseSlots(page:UITableViewController,nav:UINavigationController,completion:@escaping ()->Void) {
+  Task { @MainActor in
+   func settle() async {try? await Task.sleep(nanoseconds:450_000_000)}
+   @MainActor func select(_ controller:UITableViewController,_ section:Int,_ row:Int) {
+    controller.tableView.delegate?.tableView?(controller.tableView,didSelectRowAt:IndexPath(row:row,section:section))
+   }
+   @MainActor func currentAlert()->UIAlertController {
+    let candidates:[UIViewController?]=[page,nav,self.window?.rootViewController]
+    guard let alert=candidates.compactMap({$0?.presentedViewController as? UIAlertController}).first else {preconditionFailure("expected original slot dialog")}
+    return alert
+   }
+   @MainActor func assertMenuHittable() {
+    precondition(nav.topViewController===page,"original menu unexpectedly replaced")
+    precondition(page.presentedViewController==nil && nav.presentedViewController==nil && self.window?.rootViewController?.presentedViewController==nil)
+    page.tableView.scrollToRow(at:IndexPath(row:1,section:1),at:.middle,animated:false)
+    page.tableView.layoutIfNeeded()
+    for index in page.tableView.indexPathsForVisibleRows ?? [] where index != IndexPath(row:0,section:1) {
+     guard let cell=page.tableView.cellForRow(at:index),let window=self.window else {preconditionFailure("missing visible action")}
+     let center=cell.convert(CGPoint(x:cell.bounds.midX,y:cell.bounds.midY),to:window)
+     if center.y<page.view.safeAreaInsets.top+8 || center.y>window.bounds.height-154 {continue}
+     let hit=window.hitTest(center,with:nil)
+     precondition(hit != nil && (hit===cell || hit!.isDescendant(of:cell)),"action intercepted after slots: \(index), hit=\(String(describing:hit))")
+    }
+   }
+   for success in [false,true,false] {
+    select(page,1,2);await settle();precondition(nav.topViewController===page)
+    SAPFixtureCompleteSlotPreview(success);await settle();let alert=currentAlert()
+    precondition(alert.preferredStyle==(success ? .actionSheet:.alert),"original slot dialog style changed")
+    self.capture(success ? "slots-original-list":"slots-original-error")
+    await withCheckedContinuation { (done:CheckedContinuation<Void,Never>) in alert.dismiss(animated:true,completion:{done.resume()}) }
+    await settle();assertMenuHittable()
+    select(page,2,0);await settle();precondition(nav.topViewController !== page,"status button stopped responding")
+    nav.popViewController(animated:false);await settle();assertMenuHittable()
+   }
+   precondition(SAPFixtureSlotReleaseCalls()==0,"reading or dismissing slots sent a mutation")
+   self.write("PASS: original slot dialogs success/error/dismissal repeated; every visible menu action is hittable and status navigation works")
+   completion()
   }
  }
  func descendants(_ view:UIView)->[UIView]{[view]+view.subviews.flatMap{descendants($0)}}

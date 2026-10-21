@@ -77,6 +77,8 @@ static bool ready(void) {
     return atomic_load_explicit(&backendReady, memory_order_acquire);
 }
 
+
+
 // Caller holds setupLock. A newly published format is immutable forever.
 static void updateFormat(SAPContext *context) {
     AudioStreamBasicDescription format = {0};

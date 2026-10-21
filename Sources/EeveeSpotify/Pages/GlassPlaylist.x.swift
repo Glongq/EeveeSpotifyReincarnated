@@ -195,12 +195,19 @@ extension GlassPlaylist {
     }
 
     static func actionRow(host: UIView, controls: UIView, scroll: UIScrollView? = nil, preservePreviewLayout: Bool = false) -> Bool {
-        let sourceShuffle = PageLookup.find("Components.UI.ShuffleButton", in: controls)
-        let sourcePlay = PageLookup.find("header-play-button", in: controls)
-            guard let shuffle = sourceShuffle, let play = sourcePlay else { return false }
-        let add = PageLookup.find("Components.UI.AddToButton", in: controls)
-        let share = PageLookup.find("Components.UI.ShareButton", in: controls)
-        let follow = PageLookup.find("Curation.FollowButtonElementKit.FollowButton", in: controls)
+        let cached = objc_getAssociatedObject(host, &rowKey) as? PlaylistActionRow
+        func source(_ identifier: String, previous: UIView?) -> UIView? {
+            if let found = PageLookup.find(identifier, in: controls) { return found }
+            guard cached?.sourceRoot === controls, let previous,
+                  previous.isDescendant(of: controls) else { return nil }
+            return previous
+        }
+        let sourceShuffle = source("Components.UI.ShuffleButton", previous: cached?.shuffle)
+        let sourcePlay = source("header-play-button", previous: cached?.play)
+        guard let shuffle = sourceShuffle, let play = sourcePlay else { return false }
+        let add = source("Components.UI.AddToButton", previous: cached?.add)
+        let share = source("Components.UI.ShareButton", previous: cached?.share)
+        let follow = source("Curation.FollowButtonElementKit.FollowButton", previous: cached?.followControl)
 
         for control in [shuffle, add, share, follow].compactMap({ $0 }) {
             guard let holder = holder(of: control) else { continue }

@@ -5,6 +5,7 @@
 #import "PlayerTrace.h"
 #import "Diagnostics.h"
 #import "Deadline.h"
+#import "DiagnosticTrace.h"
 #include <os/lock.h>
 #include <stdatomic.h>
 
@@ -50,6 +51,7 @@ static NSMutableArray *totalProgressSamples;
 static NSDictionary *totalProgress;
 static NSMutableDictionary *session;         // текущая сессия загрузки
 static NSMutableArray *sessionHistory;
+static NSMutableArray *actionEvents;
 static double journalStarted;
 
 static double rightNow(void) { return CFAbsoluteTimeGetCurrent(); }
@@ -121,12 +123,16 @@ static void setup(void) {
         entityEvents = [NSMutableArray array]; entities = [NSMutableDictionary dictionary];
         snapshots = [NSMutableDictionary dictionary]; methodCalls = [NSMutableDictionary dictionary];
         totalProgressSamples = [NSMutableArray array]; sessionHistory = [NSMutableArray array];
+        actionEvents = [NSMutableArray array];
         outstanding = [NSMutableDictionary dictionary]; unanswered = [NSMutableArray array];transportEvents=[NSMutableArray array];
         lifetimes = [NSMutableArray array]; journalStarted = rightNow();
         [NSNotificationCenter.defaultCenter addObserverForName:SAPDiagnosticsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note){diagnosticsChanged();}];
     });
 }
-static void onJournal(void (^work)(void)) { setup(); dispatch_async(journal, work); }
+static void onJournal(void (^work)(void)) {
+    setup();SAPTraceID operation=SAPTraceCurrentOperation();uint64_t epoch=SAPTraceGeneration();
+    dispatch_async(journal,^{SAPTraceWithOperation(epoch==SAPTraceGeneration()?operation:0,work);});
+}
 BOOL SAPJournalOnOwnQueue(void) { return dispatch_get_specific(journalKey) != NULL; }
 
 static void trimEvents(NSMutableArray *list, NSUInteger limit) { while (list.count > limit) [list removeObjectAtIndex:0]; }
@@ -145,6 +151,43 @@ static FILE *logStream;
 static unsigned long long logBytes;
 static NSDateFormatter *logClock;
 static const unsigned long long maximumLogBytes = 8 * 1024 * 1024;
+static FILE *actionStream;
+static unsigned long long actionBytes;
+static const unsigned long long maximumActionBytes = 2 * 1024 * 1024;
+
+void SAPJournalNoteAction(NSString *name,NSDictionary *facts) {
+    if(!SAPDiagnosticsEnabled())return;
+    if(![name isKindOfClass:NSString.class] || !name.length || name.length>80 ||
+       ![facts isKindOfClass:NSDictionary.class])return;
+    NSString *eventName=[name copy];NSDictionary *values=[facts copy];
+    // Preserve the observation time before this event reaches the journal queue.
+    SAP_TRACE("sprite_action",name.UTF8String,SAPTraceCurrentOperation(),values);
+    uint64_t epoch=SAPTraceGeneration();
+    onJournal(^{
+        if(!SAPDiagnosticsEnabled()||epoch!=SAPTraceGeneration())return;
+        NSDictionary *entry=@{@"at":stamp(rightNow())?:@0,@"event":eventName,@"facts":values};
+        NSData *line=[NSJSONSerialization dataWithJSONObject:entry options:NSJSONWritingSortedKeys error:NULL];
+        if(!line)return;
+        os_unfair_lock_lock(&lock);[actionEvents addObject:entry];trimEvents(actionEvents,200);os_unfair_lock_unlock(&lock);
+        if(actionStream && actionBytes>maximumActionBytes) {
+            fclose(actionStream);actionStream=NULL;actionBytes=0;
+            NSURL *current=documentsURL(@"SpriteActions.log"),*previous=documentsURL(@"SpriteActions.1.log");
+            [NSFileManager.defaultManager removeItemAtURL:previous error:NULL];
+            [NSFileManager.defaultManager moveItemAtURL:current toURL:previous error:NULL];
+        }
+        if(!actionStream) {
+            actionStream=fopen(documentsURL(@"SpriteActions.log").fileSystemRepresentation,"a");
+            if(!actionStream)return;
+            actionBytes=(unsigned long long)ftello(actionStream);
+        }
+        if(fwrite(line.bytes,1,line.length,actionStream)==line.length &&
+           fwrite("\n",1,1,actionStream)==1)actionBytes+=line.length+1;
+        fflush(actionStream);
+    });
+}
+void SAPJournalFlushActions(void) {
+    setup();if(!SAPJournalOnOwnQueue())dispatch_sync(journal, ^{if(actionStream)fflush(actionStream);});
+}
 
 static void journalWrite(NSString *kind, NSString *detail) { // только на очереди журнала
     if(!SAPDiagnosticsEnabled())return;
@@ -206,6 +249,17 @@ static SAPTrack *recordFor(NSString *uri) { // вызывать под stateLock
 }
 static void beginSession(NSString *reason, NSString *entity);
 static void endSessionIfIdle(void);
+static void traceComparison(SAPTrack *record) {
+    if(!SAPTraceIsActive())return;
+    os_unfair_lock_lock(&lock);
+    NSDictionary *facts=@{@"uri":record->uri,@"wire_observed":@(record->seen),@"wire_state":@(record->state),
+        @"wire_journal_decoded_at":stamp(record->wireAt)?:NSNull.null,@"wire_source":record->lastSource?:@"unavailable",
+        @"icon_observed":@(record->uiStatus>=0),@"icon_status":@(record->uiStatus),@"icon_captured_at":stamp(record->iconAt)?:NSNull.null,
+        @"downloaded_states_agree":record->seen&&record->uiStatus>=0?@((record->state==3)==(record->uiStatus==3)):NSNull.null,
+        @"correlation":@"same URI, independent observations; not a simultaneous snapshot",@"file_verified":@NO};
+    os_unfair_lock_unlock(&lock);
+    SAP_TRACE("comparison","wire_and_icon",SAPTraceCurrentOperation(),facts);
+}
 
 static void applyState(NSString *uri, NSUInteger state, NSUInteger videoState, NSUInteger progress, BOOL hasProgress, NSString *source) {
     if (![uri isKindOfClass:NSString.class] || !uri.length || uri.length > 256) return;
@@ -274,6 +328,7 @@ static void applyState(NSString *uri, NSUInteger state, NSUInteger videoState, N
     if(logLine && record->uiStatus>=0)
         journalLog(@"compare",@"%@ wire=%@ icon=%@ legacy=%@",shortIdentifier(uri),SAPJournalItemStateName(state),
             uiStatusName(record->uiStatus),record->legacyState>=0?uiStatusName(record->legacyState):@"unseen");
+    if((logLine||progressLine)&&record->uiStatus>=0)traceComparison(record);
     if (startSession) beginSession(@"item_state", nil);
 }
 // Статус значка, который реально рисует строка плейлиста
@@ -281,7 +336,8 @@ static void applyState(NSString *uri, NSUInteger state, NSUInteger videoState, N
 void SAPJournalNoteUIStatus(NSString *uri, NSInteger status) {
     if(!SAPDiagnosticsEnabled())return;
     if (![uri isKindOfClass:NSString.class] || !uri.length || uri.length > 256) return;
-    NSString *copied = [uri copy];
+    SAP_TRACE("ui","download_icon_observed",SAPTraceCurrentOperation(),@{@"uri":uri,@"status":@(status),@"state_domain":@"GLUEOfflineSyncStatus",@"file_or_audio_verified":@NO});
+    NSString *copied = [uri copy];double capturedAt=rightNow();
     onJournal(^{
         if(!SAPDiagnosticsEnabled())return;
         NSString *line = nil;
@@ -289,11 +345,13 @@ void SAPJournalNoteUIStatus(NSString *uri, NSInteger status) {
         SAPTrack *record = recordFor(copied);
         if (record->uiStatus != status) {
             NSString *from = record->uiStatus >= 0 ? uiStatusName(record->uiStatus) : @"unseen";
-            record->uiStatus = status; record->iconAt = rightNow();
+            record->uiStatus = status;
             line = [NSString stringWithFormat:@"%@ icon %@ -> %@ (state %@)", shortIdentifier(copied), from,
                 uiStatusName(status), record->seen ? SAPJournalItemStateName(record->state) : @"unseen"];
         }
+        record->iconAt=capturedAt;
         os_unfair_lock_unlock(&lock);
+        if(line)traceComparison(record);
         if (line) { journalWrite(@"icon", line); requestReconciliation(copied); }
     });
 }
@@ -301,6 +359,7 @@ void SAPJournalNoteUIStatus(NSString *uri, NSInteger status) {
 void SAPJournalNoteRowState(NSString *uri, NSUInteger state) {
     if(!SAPDiagnosticsEnabled())return;
     if (![uri isKindOfClass:NSString.class] || !uri.length) return;
+    SAP_TRACE("ui","row_state_observed",SAPTraceCurrentOperation(),@{@"uri":uri,@"state":@(state),@"state_domain":@"GLUEOfflineSyncStatus"});
     NSString *copied = [uri copy];
     onJournal(^{
         if(!SAPDiagnosticsEnabled())return;
@@ -320,6 +379,7 @@ void SAPJournalNoteRowState(NSString *uri, NSUInteger state) {
 void SAPJournalNoteNativeError(NSString *uri,NSNumber *code,NSString *name) {
     if(!SAPDiagnosticsEnabled())return;
     if(![uri hasPrefix:@"spotify:track:"] || uri.length!=36 || !name.length)return;
+    SAP_TRACE("native_log","track_error",SAPTraceCurrentOperation(),@{@"uri":uri,@"name":name,@"code_present_in_line":code?:NSNull.null,@"source":@"native_log_exact_uri",@"server_rejection_reason_proven":@NO});
     double moment=rightNow();
     onJournal(^{
         if(!SAPDiagnosticsEnabled())return;
@@ -327,6 +387,8 @@ void SAPJournalNoteNativeError(NSString *uri,NSNumber *code,NSString *name) {
         NSMutableDictionary *error=[@{@"name":name,@"uri":uri,@"at":@(moment+kCFAbsoluteTimeIntervalSince1970),@"source":@"native_log_exact_uri"} mutableCopy];
         if(code)error[@"code"]=code;
         else if([record->nativeError[@"code"] integerValue]==7004 && [name isEqual:@"key_denied"])error[@"code"]=@7004;
+        error[@"code_present_in_this_line"]=code?:NSNull.null;
+        error[@"code_copied_from_previous_record"]=@(!code&&error[@"code"]!=nil);
         record->nativeError=[error copy];
         [record->nativeEvents addObject:record->nativeError];trimEvents(record->nativeEvents,12);
         os_unfair_lock_unlock(&lock);
@@ -337,6 +399,7 @@ void SAPJournalNoteNativeSuccess(NSString *uri,NSString *event) {
     if(!SAPDiagnosticsEnabled())return;
     if(![uri hasPrefix:@"spotify:track:"] || uri.length!=36 ||
        (![event isEqual:@"key_received"] && ![event isEqual:@"downloaded"]))return;
+    SAP_TRACE("native_log",event.UTF8String,SAPTraceCurrentOperation(),@{@"uri":uri,@"source":@"native_log_exact_uri",@"native_request_link":@"not_proven_by_this_log_line",@"audio_playback_tested":@NO});
     double moment=rightNow();
     onJournal(^{
         if(!SAPDiagnosticsEnabled())return;
@@ -355,16 +418,17 @@ NSDictionary *SAPJournalNativeErrorForURI(NSString *uri) {
 void SAPJournalNoteQuota(NSDictionary *quota) {
     if(!SAPDiagnosticsEnabled())return;
     if (![quota isKindOfClass:NSDictionary.class]) return;
+    SAP_TRACE("queue","native_manager_snapshot",SAPTraceCurrentOperation(),quota);
     NSDictionary *copied = [quota copy];
     onJournal(^{
         if(!SAPDiagnosticsEnabled())return;
         NSMutableDictionary *value = [copied mutableCopy];
         value[@"at"] = stamp(rightNow());
         os_unfair_lock_lock(&lock); snapshots[@"quota"] = value; os_unfair_lock_unlock(&lock);
-        journalLog(@"quota", @"tracks %@/%@ episodes %@/%@ duration %@s ready=%@ online=%@ connection_allows=%@ license_expired=%@ sync_level=%@ allow_tracks=%@ reason=%@",
+        journalLog(@"quota", @"tracks %@/%@ episodes %@/%@ duration %@s local_prepared=%@ online=%@ connection_allows=%@ license_expired=%@ sync_level=%@ allow_tracks=%@ reason=%@",
             copied[@"current_tracks"] ?: @"?", copied[@"music_limit"] ?: @"?",
             copied[@"current_episodes"] ?: @"?", copied[@"episode_limit"] ?: @"?",
-            copied[@"music_duration_seconds"] ?: @"?", copied[@"ready"] ?: @"?",
+            copied[@"music_duration_seconds"] ?: @"?", copied[@"local_prepared"] ?: @"?",
             copied[@"online"] ?: @"?", copied[@"connection_allows_offlining"] ?: @"?",
             copied[@"track_license_expired"] ?: @"?", copied[@"sync_level"] ?: @"?",
             copied[@"allow_spotify_tracks"] ?: @"?", copied[@"reason"] ?: @"");
@@ -644,6 +708,8 @@ void SAPJournalObserveCall(NSString *method, NSData *request, NSData *response, 
     if(!SAPDiagnosticsEnabled())return;
     if (![method isKindOfClass:NSString.class] || method.length > 64) return;
     if (response && ![response isKindOfClass:NSData.class]) return;
+    SAP_TRACE("offline_observation","response_decoded_at_journal_boundary",SAPTraceCurrentOperation(),@{@"method":method,@"source":source?:@"unknown",
+        @"response":SAPTraceWireSummary(@"spotify.offline_esperanto.proto.Offline",method,response,YES),@"rpc_parent_link":SAPTraceCurrentOperation()?@"callback_context":@"unavailable"});
     NSString *copiedMethod = [method copy], *copiedSource = [source copy];
     NSData *copiedRequest = [request isKindOfClass:NSData.class] && request.length <= 1048576 ? [request copy] : nil;
     NSData *copiedResponse = response.length <= 4 * 1024 * 1024 ? [response copy] : nil;
@@ -884,6 +950,7 @@ static void diagnosticsChanged(void) {
         }
         os_unfair_lock_unlock(&lock);
         if(logStream){fclose(logStream);logStream=NULL;}
+        if(actionStream){fclose(actionStream);actionStream=NULL;}
         lastRefresh=0;lastQuotaSample=0;
     });
 }
@@ -1021,8 +1088,7 @@ void SAPJournalRefresh(NSString *reason) {
         if (reason.length) { NSLog(@"[SpotifyAudioProbe] journal refresh (%@)", reason); journalLog(@"refresh", @"%@", reason); }
     });
 }
-void SAPJournalReset(void) {
-    onJournal(^{
+static void resetJournalState(void) {
         os_unfair_lock_lock(&lock);
         [tracks removeAllObjects]; [transitions removeAllObjects]; [errorEvents removeAllObjects];
         [contextAddedEvents removeAllObjects]; [entityEvents removeAllObjects]; [entities removeAllObjects];
@@ -1032,9 +1098,27 @@ void SAPJournalReset(void) {
         os_unfair_lock_unlock(&lock);
         session = nil; pollTicks = 0;lastQuotaSample=0; stopPolling(); cancelLifetimes();[reconciliationTimes removeAllObjects];
         SAPPlayerTraceReset();
-        NSLog(@"[SpotifyAudioProbe] journal reset");
+        if(SAPTraceIsActive())SAPPlayerTraceSetActive(YES);
+        if(SAPDiagnosticsEnabled())NSLog(@"[SpotifyAudioProbe] journal reset");
         journalWrite(@"reset", @"journal cleared by user");
-    });
+}
+void SAPJournalReset(void) {onJournal(^{resetJournalState();});}
+BOOL SAPJournalResetLogFiles(NSError **error) {
+    setup();__block NSError *failure=nil;
+    dispatch_block_t clear=^{
+        resetJournalState();
+        if(logStream){fclose(logStream);logStream=NULL;}logBytes=0;
+        if(actionStream){fclose(actionStream);actionStream=NULL;}actionBytes=0;
+        os_unfair_lock_lock(&lock);[actionEvents removeAllObjects];os_unfair_lock_unlock(&lock);
+        for(NSString *name in @[@"SpotifyAudioProbeJournal.log",@"SpotifyAudioProbeJournal.1.log",@"SpriteActions.log",@"SpriteActions.1.log",
+            @"SpriteSupportLog.json",@"SpotifyAudioProbe.json",@"SpotifyAudioProbeTracks.json",@"SpotifyAudioProbeTracks.txt"]) {
+            NSURL *url=documentsURL(name);NSError *e=nil;
+            if([NSFileManager.defaultManager fileExistsAtPath:url.path]&&![NSFileManager.defaultManager removeItemAtURL:url error:&e]&&!failure)failure=e;
+        }
+        lastRefresh=0;lastQuotaSample=0;
+    };
+    if(SAPJournalOnOwnQueue())clear();else dispatch_sync(journal,clear);
+    if(error)*error=failure;return failure==nil;
 }
 
 // --- отчёты ---------------------------------------------------------------
@@ -1127,6 +1211,7 @@ NSDictionary *SAPJournalReport(void) {
         @"player_trace_sink_dropped":@(atomic_load(&playerTraceSinkDropped)),
         @"diagnostics_enabled":@(SAPDiagnosticsEnabled()),
         @"journal_version": @6,@"focused_uri":focusedURI?:@"",@"transport_events":[transportEvents copy],
+        @"action_events":[actionEvents copy],@"action_log_file":@"SpriteActions.log",
         @"generated_at": stamp(moment) ?: @0,
         @"journal_age_seconds": @(round(moment - journalStarted)),
         @"caller_available": @(atomic_load(&callerAvailable)), @"subscribed": @(subscribed),
@@ -1172,6 +1257,14 @@ NSString *SAPJournalSummaryForReport(NSDictionary *report) {
     NSDictionary *license = report[@"snapshots"][@"license_status"], *preflight = report[@"snapshots"][@"bulk_preflight"];
     NSDictionary *quota = report[@"snapshots"][@"quota"], *playback = report[@"snapshots"][@"offline_playback"];
     NSMutableString *text = [NSMutableString string];
+    NSDictionary *core=report[@"snapshots"][@"core_status"];
+    if([core[@"code"]unsignedLongLongValue]) {
+        [text appendFormat:@"Last offline-core response: %@ (%@), %@ ago. Source: in-process API; server origin unverified.\n",
+            errorName([core[@"code"]unsignedLongLongValue]),core[@"code"],durationText([report[@"generated_at"]doubleValue]-[core[@"at"]doubleValue])];
+    }
+    if(playback.count && ![playback[@"allowed"]boolValue])
+        [text appendFormat:@"Last Spotify offline playback response: NOT ALLOWED, %@ ago. Local quota changes do not confirm authorization.\n",
+            durationText([report[@"generated_at"]doubleValue]-[playback[@"at"]doubleValue])];
     [text appendFormat:SAPL(@"Треков в журнале: %@ · запрошено: %@\n",@"Tracks in log: %@ · requested: %@\n"), report[@"tracked_tracks"], report[@"requested_tracks"]];
     [text appendFormat:@"✅ %@ · ⏬ %@ · ⌛ %@ · ⏸ %@\n",
         counts[@"downloaded"] ?: @0, counts[@"downloading"] ?: @0, counts[@"waiting"] ?: @0, counts[@"awaiting_redownload"] ?: @0];
@@ -1187,13 +1280,13 @@ NSString *SAPJournalSummaryForReport(NSDictionary *report) {
             bytesText([progress[@"download_speed"] unsignedLongLongValue]),
             durationText([progress[@"seconds_left"] doubleValue])];
     }
-    if (license.count) [text appendFormat:SAPL(@"Лицензии: свободно %@ из %@%@\n",@"Licenses: %@ of %@ free%@\n"), license[@"free_licenses"], license[@"max_licenses"],
+    if (license.count) [text appendFormat:SAPL(@"Лицензии: свободно %@ из %@%@\n",@"Device licenses (last response): %@ of %@ free%@\n"), license[@"free_licenses"], license[@"max_licenses"],
         [license[@"error"] unsignedLongLongValue] ? [NSString stringWithFormat:@" (%@)", license[@"error_name"]] : @""];
     if (preflight.count) [text appendFormat:SAPL(@"Места хватает: %@ · сотовая сеть: %@ · грузится сейчас: %@\n",@"Enough storage: %@ · cellular: %@ · downloading now: %@\n"),
         [preflight[@"has_sufficient_storage"] boolValue] ? SAPL(@"да",@"yes") : SAPL(@"НЕТ",@"NO"),
         [preflight[@"is_on_cellular"] boolValue] ? ([preflight[@"sync_over_cellular_allowed"] boolValue] ? SAPL(@"разрешена",@"allowed") : SAPL(@"ЗАПРЕЩЕНА",@"BLOCKED")) : SAPL(@"не используется",@"not in use"),
         preflight[@"downloads_in_progress"]];
-    if (quota.count) [text appendFormat:SAPL(@"Квота менеджера: %@/%@ треков\n",@"Manager quota: %@/%@ tracks\n"), quota[@"current_tracks"] ?: @"?", quota[@"music_limit"] ?: @"?"];
+    if (quota.count) [text appendFormat:SAPL(@"Квота менеджера: %@/%@ треков\n",@"Local manager quota: %@/%@ tracks (does not confirm device licensing)\n"), quota[@"current_tracks"] ?: @"?", quota[@"music_limit"] ?: @"?"];
     if (playback.count) [text appendFormat:SAPL(@"Офлайн-воспроизведение: %@\n",@"Offline playback: %@\n"), [playback[@"allowed"] boolValue] ? SAPL(@"разрешено",@"allowed") : SAPL(@"ЗАПРЕЩЕНО",@"BLOCKED")];
     NSDictionary *lastError = [report[@"core_errors"] lastObject];
     if (lastError) [text appendFormat:SAPL(@"Последняя ошибка ядра: %@ (%@), %@ назад\n",@"Last core error: %@ (%@), %@ ago\n"), lastError[@"name"], lastError[@"code"],
@@ -1223,7 +1316,7 @@ NSString *SAPJournalSummaryForReport(NSDictionary *report) {
 }
 static NSString *tableText(NSDictionary *report) {
     NSMutableString *text = [NSMutableString string];
-    [text appendFormat:@"%@ — offline download status, %@\n", SAPManagerName, [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
+    [text appendFormat:SAPL(@"SpotifyAudioProbe — состояние офлайн-загрузки, %@\n",@"Pixie Download Manager — offline download status, %@\n"), [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
     [text appendString:SAPJournalSummaryForReport(report)];
     [text appendString:@"\n"];
     [text appendFormat:@"%-24s %-22s %5s %8s %6s %s\n", [SAPL(@"ТРЕК",@"TRACK") UTF8String], [SAPL(@"СОСТОЯНИЕ",@"STATE") UTF8String], "%", [SAPL(@"В СОСТ.",@"IN STATE") UTF8String], "UI", [SAPL(@"ПЕРЕХОДЫ",@"TRANSITIONS") UTF8String]];

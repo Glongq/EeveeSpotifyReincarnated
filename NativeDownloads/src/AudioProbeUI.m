@@ -1,6 +1,10 @@
 #import "Localization.h"
+#import "SupportLog.h"
+#import "DownloadCompatibility.h"
+#import "OfflineDevices.h"
 #import <UIKit/UIKit.h>
 #import <AVFAudio/AVFAudio.h>
+#import <dlfcn.h>
 #import "AudioProbe.h"
 #import "SourceGraph.h"
 #import "OfflineFlags.h"
@@ -11,6 +15,11 @@
 #import "AudioProbeUI.h"
 #import "Features.h"
 #import "Diagnostics.h"
+#import "DiagnosticTrace.h"
+#import "TracePlatform.h"
+#import "NativeKeyTrace.h"
+#import "PlayerTrace.h"
+#import "NativeErrorLog.h"
 
 static NSURL *SAPDocuments(void) {
     return [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
@@ -46,7 +55,7 @@ static void SAPPresent(UIViewController *modal) {
 }
 
 static void SAPMessage(NSString *message) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:SAPManagerName message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:SAPL(@"Менеджер загрузок Pixie",@"Pixie Download Manager") message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action){[NSNotificationCenter.defaultCenter postNotificationName:@"SAPDownloadSettingsChanged" object:nil];}]];
     SAPPresent(alert);
 }
@@ -162,7 +171,7 @@ static void put32(uint8_t *p, uint32_t value) { for (unsigned i = 0; i < 4; ++i)
         dispatch_source_set_timer(self->_timer, dispatch_time(DISPATCH_TIME_NOW, 0), 50 * NSEC_PER_MSEC, 10 * NSEC_PER_MSEC);
         dispatch_source_set_event_handler(self->_timer, ^{ [self drain]; });
         dispatch_resume(self->_timer);
-        dispatch_async(dispatch_get_main_queue(), ^{ self.lastFile = url; SAPMessage(SAPL(@"Запись WAV началась. Для завершения открой «Загрузки треков» → «Остановить запись и экспортировать».",@"WAV recording started. To finish, open Sprite Download Manager → Stop recording and export.")); });
+        dispatch_async(dispatch_get_main_queue(), ^{ self.lastFile = url; SAPMessage(SAPL(@"Запись WAV началась. Для завершения открой «Менеджер загрузок Pixie» → «Остановить запись и экспортировать».",@"WAV recording started. To finish, open Pixie Download Manager → Stop recording and export.")); });
     });
 }
 
@@ -251,12 +260,14 @@ static dispatch_queue_t SAPReportQueue(void) {
     static dispatch_queue_t queue;static dispatch_once_t once;
     dispatch_once(&once,^{queue=dispatch_queue_create("SpotifyAudioProbe.reports",dispatch_queue_attr_make_with_autorelease_frequency(DISPATCH_QUEUE_SERIAL,DISPATCH_AUTORELEASE_FREQUENCY_WORK_ITEM));});return queue;
 }
-static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
-    NSDictionary *journal=SAPJournalReport();
+static NSDictionary *SAPCompleteDiagnosticSnapshotWithJournal(NSDictionary *native,NSDictionary *journal) {
     NSDictionary *download=SAPTrackDownloadReportWithJournal(journal);
     NSMutableDictionary *report=[native[@"report"] mutableCopy];
     report[@"track_download"]=download;report[@"track_journal"]=SAPJournalCompact(journal,download[@"track_uri"]);
     NSMutableDictionary *result=[native mutableCopy];result[@"report"]=report;result[@"journal_summary"]=download[@"journal_summary"];return result;
+}
+static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
+    return SAPCompleteDiagnosticSnapshotWithJournal(native,SAPJournalReport());
 }
 
 @implementation SAPSettingsActions
@@ -264,7 +275,7 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
     return @{@"diagnostics_enabled":@(SAPDiagnosticsEnabled()),
         @"diagnostics":SAPL(@"Диагностика выключена. Включи переключатель «Диагностика» для сбора данных.",@"Diagnostics are off. Enable Diagnostics to collect data."),
         @"journal_summary":SAPL(@"Диагностика выключена. Журнал не обновляется. Проверка текущего трека доступна отдельно.",@"Diagnostics are off. The log is not updated. You can still check the current track separately."),
-        @"download_active":@(SAPTrackDownloadActive()),@"recording":@(SAPRecording()),
+        @"download_active":@(SAPTrackDownloadActive()),@"key_request_mode":SAPKeyRequestModeReport(),@"recording":@(SAPRecording()),
         @"last_wav_available":@(SAPLastWAVAvailable())};
 }
 + (NSDictionary *)snapshotForDetails:(BOOL)journal {
@@ -290,8 +301,8 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
     NSArray *ports = [AVAudioSession.sharedInstance.currentRoute.outputs valueForKey:@"portName"];
     NSString *route = [ports componentsJoinedByString:@", "];
     NSDictionary *report = @{
-        @"manager_name": SAPManagerName,@"manager_version": SAPManagerVersion,@"manager_language": @"en",
-        @"probe_version": @24,@"wav_capture_supported":@(SAP_ENABLE_WAV_CAPTURE),@"diagnostics_enabled":@(SAPDiagnosticsEnabled()), @"backend_ready": @(s.backendReady), @"pcm_confirmed": @(s.pcmConfirmed),
+        @"manager_name":SAPManagerName,@"manager_version":SAPManagerVersion,@"manager_language":@"en",
+        @"probe_version": @26,@"sprite_build":@"9.1.88-v1",@"wav_capture_supported":@(SAP_ENABLE_WAV_CAPTURE),@"diagnostics_enabled":@(SAPDiagnosticsEnabled()), @"backend_ready": @(s.backendReady), @"pcm_confirmed": @(s.pcmConfirmed),
         @"au_set_calls": @(s.setPropertyCalls), @"au_callback_attempts": @(s.callbackAttempts),
         @"au_last_scope": @(s.lastCallbackScope), @"au_last_type": fourcc(s.lastComponentType),
         @"au_last_element": @(s.lastCallbackElement), @"au_last_subtype": fourcc(s.lastComponentSubtype),
@@ -307,11 +318,13 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
         @"source_image": source, @"source_callback": [NSString stringWithFormat:@"0x%llx", (unsigned long long)s.procAddress],
         @"unit": [NSString stringWithFormat:@"0x%llx", (unsigned long long)s.unitAddress],
         @"track_source": SAPSourceReport(), @"offline_flags": SAPOfflineFlagsReport(), @"offline_config": SAPOfflineConfigReport() ,
+        @"key_request_mode":SAPKeyRequestModeReport(),@"compatibility_check":SAPDownloadCompatibilityReport(),
+        @"trace_coverage":SAPTraceReport(),@"native_key_trace":SAPNativeKeyTraceReport(),
         @"route": route ?: @"", @"pool_exhausted": @(s.poolExhausted), @"retired": @(s.retired),
         @"last_callback_age_seconds": @(s.lastCallbackAgeSeconds)
     };
     NSString *message = [NSString stringWithFormat:SAPL(@"%@\nCallback: %llu · Кадров: %llu\nPCM: %llu байт · Ненулевых блоков: %llu\n%.0f Hz · %u ch · %u bit · %@\nИсточник: %@\nВыход: %@\nЗаглушённых блоков: %llu%@",@"%@\nCallbacks: %llu · Frames: %llu\nPCM: %llu bytes · Nonzero buffers: %llu\n%.0f Hz · %u ch · %u bit · %@\nSource: %@\nOutput: %@\nMuted buffers: %llu%@"),
-        [NSString stringWithFormat:SAPL(@"v24 · %@ · Хуков AV: %u\nAU вызовов: %u · Запусков: %u\nКолбэки: %u → %u · %@\nSampleBuffer: %llu · PlayerNode: %llu\nСжатых: %llu (%@) · Ошибок: %llu\n%@",@"v24 · %@ · AV hooks: %u\nAU calls: %u · Starts: %u\nCallbacks: %u → %u · %@\nSampleBuffer: %llu · PlayerNode: %llu\nCompressed: %llu (%@) · Errors: %llu\n%@"),
+        [NSString stringWithFormat:SAPL(@"v26 · %@ · Хуков AV: %u\nAU вызовов: %u · Запусков: %u\nКолбэки: %u → %u · %@\nSampleBuffer: %llu · PlayerNode: %llu\nСжатых: %llu (%@) · Ошибок: %llu\n%@",@"v26 · %@ · AV hooks: %u\nAU calls: %u · Starts: %u\nCallbacks: %u → %u · %@\nSampleBuffer: %llu · PlayerNode: %llu\nCompressed: %llu (%@) · Errors: %llu\n%@"),
             s.backendReady ? SAPL(@"библиотека готова",@"library ready") : SAPL(@"ошибка AudioToolbox",@"AudioToolbox error"), s.objcHooks,
             s.setPropertyCalls, s.outputStarts, s.callbackAttempts, s.registrations, fourcc(s.lastComponentType),
             (unsigned long long)s.sampleBufferCalls,
@@ -323,12 +336,28 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
         source.lastPathComponent.length ? source.lastPathComponent : SAPL(@"не зарегистрирован",@"not registered"), route,
         (unsigned long long)s.mutedCallbacks, SAPRecording() ? SAPL(@"\n● Идёт запись WAV",@"\n● Recording WAV") : @""];
     return @{ @"report":report, @"diagnostics":message, @"journal_summary":@"",
-        @"download_active":@(SAPTrackDownloadActive()), @"recording":@(SAPRecording()),
+        @"download_active":@(SAPTrackDownloadActive()), @"key_request_mode":SAPKeyRequestModeReport(), @"recording":@(SAPRecording()),
         @"last_wav_available":@(SAPLastWAVAvailable()) };
 }
++ (void)setKeyRequestMode:(NSInteger)mode completion:(void (^)(BOOL,NSString *))completion {
+    SAPSetKeyRequestMode(mode,completion);
+}
++ (void)refreshDownloadCompatibility:(void (^)(NSDictionary *))completion {
+    SAPRefreshDownloadCompatibility(completion);
+}
++ (void)previewOfflineDeviceSlots:(void (^)(NSDictionary *,NSString *))completion {SAPPreviewOfflineDeviceSlots(completion);}
++ (void)releaseOfflineDeviceSlots:(NSString *)planID cacheIDs:(NSArray *)cacheIDs completion:(void (^)(NSDictionary *,NSString *))completion {SAPReleaseOfflineDeviceSlots(planID,cacheIDs,completion);}
++ (void)enableOfflineOnCurrentDevice:(void (^)(NSDictionary *,NSString *))completion {SAPEnableOfflineOnCurrentDevice(completion);}
 + (void)perform:(SAPSettingsAction)action {
+    if(!SAPTraceIsActive()){[self performObserved:action];return;}
+    SAPTraceID operation=SAPTraceBegin(@"settings_action",@"sprite_ui",@{@"action_number":@(action)});
+    SAPTraceWithOperation(operation,^{[self performObserved:action];});
+    SAP_TRACE("ui","action_handler_returned",operation,@{@"action_number":@(action),@"asynchronous_completion_proven":@NO});
+}
++ (void)performObserved:(SAPSettingsAction)action {
     switch(action) {
         case SAPSettingsDownload: SAPDownloadCurrentTrack(^(NSString *text){SAPDownloadMessage(text);});break;
+        case SAPSettingsDownloadAlbum: SAPDownloadCurrentAlbum(^(NSString *text){SAPDownloadMessage(text);});break;
         case SAPSettingsVerify: SAPVerifyCurrentTrack(^(NSString *text){SAPDownloadMessage(text);});break;
         case SAPSettingsCancelDownload: SAPCancelTrackDownload();break;
         case SAPSettingsRefreshJournal: SAPJournalRefresh(@"settings");break;
@@ -342,7 +371,20 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
                 dispatch_async(dispatch_get_main_queue(),^{if(items.count)SAPShareItems(items);else SAPMessage(SAPL(@"Журнал пока пуст.",@"The log is empty."));});
             });break;
         }
-        case SAPSettingsResetJournal: SAPJournalReset();break;
+        case SAPSettingsResetJournal: {
+            dispatch_async(SAPReportQueue(),^{
+                NSError *journalError=nil,*traceError=nil;
+                BOOL journalCleared=SAPJournalResetLogFiles(&journalError),traceCleared=SAPTraceReset(&traceError);
+                SAPPlayerTraceReset();if(SAPDiagnosticsEnabled())SAPPlayerTraceSetActive(YES);
+                dispatch_async(dispatch_get_main_queue(),^{
+                    SAPTracePlatformSetActive(SAPDiagnosticsEnabled());
+                    if(!journalCleared||!traceCleared){SAPMessage([NSString stringWithFormat:@"Log reset was not fully completed: %@",(journalError?:traceError).localizedDescription?:@"unknown file error"]);return;}
+                    SAPJournalNoteAction(@"log_reset",@{@"previous_sprite_history_removed":@YES,@"diagnostics_enabled":@(SAPDiagnosticsEnabled())});
+                    if(SAPDiagnosticsEnabled()){SAPTraceCaptureRuntimeManifest("manual_log_reset");SAPJournalRefresh(@"manual log reset");}
+                    SAPMessage(SAPDiagnosticsEnabled()?@"Previous Pixie logs cleared. A fresh log is now recording.":@"Previous Pixie logs cleared. Diagnostics remains off; enable it to record a new log.");
+                });
+            });break;
+        }
         case SAPSettingsMute:
             if(!SpotifyAudioProbeMuteForSeconds(2))SAPMessage(SAPL(@"Сначала запусти воспроизведение на этом iPhone.",@"Start playback on this iPhone first."));break;
         case SAPSettingsToggleRecording:
@@ -362,19 +404,48 @@ static NSDictionary *SAPCompleteDiagnosticSnapshot(NSDictionary *native) {
                 dispatch_async(dispatch_get_main_queue(),^{if(saved)SAPShare(url);else SAPMessage(SAPL(@"Не удалось сохранить отчёт.",@"Could not save the report."));});
             });break;
         }
+        case SAPSettingsSendLog: {
+            SAPJournalNoteAction(@"send_log_requested",@{@"diagnostics_enabled":@(SAPDiagnosticsEnabled())});
+            NSDictionary *native=[self diagnosticSnapshot];
+            SAPTraceCaptureRuntimeManifest("support_log_export");
+            dispatch_async(SAPReportQueue(),^{
+                SAPJournalFlushActions();
+                NSDictionary *journal=SAPJournalReport();
+                NSMutableDictionary *report=[SAPCompleteDiagnosticSnapshotWithJournal(native,journal)[@"report"] mutableCopy];
+                report[@"observation_note"]=[native[@"report"][@"diagnostics_enabled"] boolValue]?@"Passive diagnostic events were enabled when this package was exported.":@"Passive diagnostic events were disabled when this package was exported; their absence does not prove that no event occurred.";
+                report[@"diagnostic_trace"]=SAPTraceExport();
+                NSURL *summary=[SAPDocuments() URLByAppendingPathComponent:@"SpriteSupportLog.json"];
+                NSMutableArray *files=[NSMutableArray array];
+                for(NSString *name in @[@"SpotifyAudioProbeJournal.log",@"SpotifyAudioProbeJournal.1.log",@"SpriteActions.log",@"SpriteActions.1.log"]) {
+                    NSURL *url=[SAPDocuments() URLByAppendingPathComponent:name];
+                    [files addObject:SAPSupportLogReadFile(url)];
+                }
+                NSURL *eeveeLog=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"eeveespotify_debug.log"]];
+                [files addObject:SAPSupportLogReadFile(eeveeLog)];
+                NSError *error=nil;
+                BOOL saved=SAPSupportLogWrite(summary,report,journal,SAPJournalSummaryForReport(journal),files,&error);
+                dispatch_async(dispatch_get_main_queue(),^{if(saved)SAPShare(summary);else SAPMessage([NSString stringWithFormat:@"Could not save the support log: %@",error.localizedDescription?:@"unknown error"]);});
+            });break;
+        }
     }
 }
 @end
 
 __attribute__((constructor)) static void SAPLoad(void) {
     @autoreleasepool {
+
         SAPDiagnosticsInitialize();
+        if(SAPDiagnosticsEnabled()){SAPPlayerTraceSetActive(YES);SAPNativeErrorLogSetActive(YES);}
+        [NSNotificationCenter.defaultCenter addObserverForName:SAPDiagnosticsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note){
+            SAPPlayerTraceSetActive(SAPDiagnosticsEnabled());SAPNativeErrorLogSetActive(SAPDiagnosticsEnabled());
+        }];
         SpotifyAudioProbeInitialize();
         SAPInstallAVHooks();
         SAPInstallOfflineFlags();
         SAPInstallOfflineConfig();
         SAPInstallNativeOffline();
         SAPInstallTrackDownloader();
+        SAP_TRACE("startup","sprite_hooks_installed",0,@{@"offline_flags":SAPOfflineFlagsReport(),@"offline_config":SAPOfflineConfigReport(),@"native_offline":SAPNativeOfflineReport(),@"transport":SAPTrackDownloadReport(),@"hooks":SAPTraceHookManifest()});
         dispatch_async(dispatch_get_main_queue(), ^{ SAPInstallDownloadSettings(); });
     }
 }

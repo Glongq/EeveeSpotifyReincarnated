@@ -33,3 +33,37 @@ def patch(data):
     return bytes(out),{'caller':hex(CALL_SITE),'provider':hex(PROVIDER),'original_mode':1,'request_mode':0,
         'original_instruction':data[at:at+4].hex(),'replacement_instruction':out[at:at+4].hex(),
         'native_callbacks_and_persistence_unchanged':True}
+
+
+DLSYM_STUB=0x10a16f0cc
+DLSYM_STUB_HEAD=bytes.fromhex('503801f010c245f900021fd6')
+
+def _verify_dlsym_binding(data):
+    cursor = 32
+    symtab = dysym = stubs = None
+    for _ in range(struct.unpack_from('<I', data, 16)[0]):
+        command, length = struct.unpack_from('<II', data, cursor)
+        if command == 2:
+            symtab = struct.unpack_from('<IIII', data, cursor + 8)
+        elif command == 0xB:
+            dysym = struct.unpack_from('<IIIIIIIIIIIIIIIIII', data, cursor + 8)
+        elif command == 0x19:
+            for index in range(struct.unpack_from('<I', data, cursor + 64)[0]):
+                section = cursor + 72 + index * 80
+                if data[section:section + 16].split(b'\0')[0] == b'__stubs':
+                    address, size = struct.unpack_from('<QQ', data, section + 32)
+                    first, width = struct.unpack_from('<II', data, section + 68)
+                    if address <= DLSYM_STUB < address + size:
+                        stubs = (address, first, width)
+        cursor += length
+    if not symtab or not dysym or not stubs:
+        raise ValueError('Cannot verify dlsym import binding')
+    address, first, width = stubs
+    if width != 12 or (DLSYM_STUB - address) % width:
+        raise ValueError('dlsym stub layout changed')
+    index = struct.unpack_from('<I', data, dysym[12] + 4 * (first + (DLSYM_STUB - address) // width))[0]
+    if index >= symtab[1]:
+        raise ValueError('dlsym indirect symbol index invalid')
+    string = symtab[2] + struct.unpack_from('<I', data, symtab[0] + 16 * index)[0]
+    if data[string:data.index(b'\0', string)] != b'_dlsym':
+        raise ValueError('Expected dlsym stub is bound to another symbol')

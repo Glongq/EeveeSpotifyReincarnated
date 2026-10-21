@@ -1,5 +1,6 @@
 #import "PlayerTrace.h"
 #import "WireProto.h"
+#import "DiagnosticTrace.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <CommonCrypto/CommonDigest.h>
@@ -54,6 +55,8 @@ static void append(NSDictionary *event, uint64_t generation) {
     NSMutableDictionary *value = [event mutableCopy];
     value[@"sequence"] = @(++sequence);
     NSDictionary *immutable = [value copy];
+    if([event[@"trace_segment"]unsignedLongLongValue]==SAPTraceGeneration())
+        SAP_TRACE("player","structured_observation",[event[@"trace_operation_id"]unsignedLongLongValue],immutable);
     [events addObject:immutable];
     if (events.count > maxEvents) [events removeObjectAtIndex:0];
     NSDictionary *newSnapshot = @{@"events": [events copy], @"event_count": @(sequence),
@@ -178,6 +181,7 @@ void SAPPlayerTraceSetSink(void (^sink)(NSDictionary *)) {
     syncQueue(^{ eventSink = [sink copy]; });
 }
 void SAPPlayerTraceSetActive(BOOL active) {
+    if(!active&&SAPTraceIsActive())return;
     initialize();
     if (!active) {
         atomic_store(&enabled, false);
@@ -225,10 +229,11 @@ void SAPObservePlayerRequest(id service, id method, id payload) {
     NSData *copy = tooLarge ? nil : [payload copy];
     NSString *command = [method copy];
     NSTimeInterval at = CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970;
+    SAPTraceID operation=SAPTraceCurrentOperation();uint64_t traceSegment=SAPTraceGeneration();
     dispatch_async(traceQueue, ^{
         @try {
             if (!current(generation)) return;
-            NSMutableDictionary *event = [@{@"type": @"request", @"method": command, @"at": @(at), @"request_bytes": @(length)} mutableCopy];
+            NSMutableDictionary *event = [@{@"type": @"request", @"method": command, @"at": @(at), @"request_bytes": @(length),@"trace_operation_id":@(operation),@"trace_segment":@(traceSegment)} mutableCopy];
             if (tooLarge) { atomic_fetch_add(&oversized, 1); event[@"parse_skipped_oversize"] = @YES; append(event, generation); return; }
             NSArray *fields = SAPProtoFields(copy);
             if (!fields) { event[@"parse_failed"] = @YES; append(event, generation); return; }
@@ -273,6 +278,7 @@ void SAPObservePlayerState(id state) {
     uint64_t generation;
     if (!state || !reserve(&generation)) return;
     NSTimeInterval at = CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970;
+    SAPTraceID operation=SAPTraceCurrentOperation();uint64_t traceSegment=SAPTraceGeneration();
     NSDictionary *captured;
     @try {
         if (!current(generation)) { atomic_fetch_sub(&pending, 1); return; }
@@ -303,6 +309,7 @@ void SAPObservePlayerState(id state) {
             lastState = captured;
             NSMutableDictionary *value = [captured mutableCopy];
             value[@"type"] = @"state"; value[@"at"] = @(at);
+            value[@"trace_operation_id"]=@(operation);value[@"trace_segment"]=@(traceSegment);
             append(value, generation);
         } @finally { atomic_fetch_sub(&pending, 1); }
     });

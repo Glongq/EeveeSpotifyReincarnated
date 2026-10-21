@@ -139,7 +139,7 @@ jobs:
           EEVEE_VERSION=$(grep -E '^Version:' control | awk '{print $2}')
           OUT="Outputs/IPAS/EeveeSpotify-${EEVEE_VERSION}-${SPOT_VERSION}.ipa"
           if [ "$NATIVE_DOWNLOADS_JAILBREAK" = "1" ]; then
-            OUT="Outputs/IPAS/Spotify-${SPOT_VERSION}-Eevee+Sprite.ipa"
+            OUT="Outputs/IPAS/Spotify-${SPOT_VERSION}-Eevee-Pixie-v1.ipa"
           fi
 
           INJECT=("$DYLIB_SRC")

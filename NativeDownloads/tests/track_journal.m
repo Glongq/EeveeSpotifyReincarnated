@@ -181,7 +181,7 @@ int main(void) {
         NSString *written = [NSString stringWithContentsOfURL:table encoding:NSUTF8StringEncoding error:NULL];
         assert([written containsString:@"waiting_limit_exceeded"] && [written containsString:@"TOO_MANY_TRACKS"]);
         NSString *summary = SAPJournalSummaryText();
-        assert([summary containsString:SAPL(@"Лицензии",@"Licenses")] && [summary containsString:SAPL(@"Очередь ядра",@"Core queue")]);
+        assert([summary containsString:@"Device licenses"] && [summary containsString:SAPL(@"Очередь ядра",@"Core queue")]);
         assert([summary containsString:SAPL(@"Проблемные треки",@"Tracks with issues")]);
 
         // 9. Постоянный лог на диске: весь путь треков, переживает перезапуск.
@@ -312,6 +312,13 @@ int main(void) {
         SAPJournalObserveCall(@"GetItems",nil,item(trackA,3,100),@"off");SAPJournalRefresh(@"off");
         SAPJournalDrainForTesting();assert(reads.count==oldReads && sent.count==oldSent);
         NSDictionary *quietReport=SAPJournalReport();assert(![quietReport[@"diagnostics_enabled"] boolValue]);
+        NSUInteger oldActions=[quietReport[@"action_events"]count];
+        NSString *actionPath=[NSTemporaryDirectory()stringByAppendingPathComponent:@"SpriteActions.log"];
+        NSData *beforeActions=[NSData dataWithContentsOfFile:actionPath];
+        for(unsigned i=0;i<100;i++)SAPJournalNoteAction(@"must_not_log_while_off",@{@"i":@(i)});
+        SAPJournalDrainForTesting();
+        NSData *afterActions=[NSData dataWithContentsOfFile:actionPath];
+        assert([SAPJournalReport()[@"action_events"]count]==oldActions&&((!beforeActions&&!afterActions)||[beforeActions isEqual:afterActions]));
         assert(![quietReport[@"subscribed"] boolValue] && [quietReport[@"session"] count]==0);
         assert(![SAPNativeErrorLogReport()[@"requested"] boolValue]);
         verifiedDone=NO;pendingRead=nil;
@@ -339,6 +346,15 @@ int main(void) {
         NSString *flushedLog=[NSString stringWithContentsOfFile:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SpotifyAudioProbeJournal.log"] encoding:NSUTF8StringEncoding error:NULL];
         assert([flushedLog containsString:@"immediate_flush_test"]);
         puts("PASS: TXT/JSON reuse the same immutable snapshot and error lines are immediately readable");
+        SAPJournalNoteAction(@"before_manual_reset",@{@"old":@YES});SAPJournalDrainForTesting();
+        NSError *resetError=nil;assert(SAPJournalResetLogFiles(&resetError)&&!resetError);
+        assert([SAPJournalReport()[@"tracked_tracks"]unsignedIntegerValue]==0&&[SAPJournalReport()[@"action_events"]count]==0);
+        assert(![NSFileManager.defaultManager fileExistsAtPath:actionPath]);
+        assert(![NSFileManager.defaultManager fileExistsAtPath:[NSTemporaryDirectory()stringByAppendingPathComponent:@"SpotifyAudioProbeJournal.log"]]);
+        SAPJournalNoteAction(@"after_manual_reset",@{@"fresh":@YES});SAPJournalDrainForTesting();
+        NSString *newActions=[NSString stringWithContentsOfFile:actionPath encoding:NSUTF8StringEncoding error:nil];
+        assert([newActions containsString:@"after_manual_reset"]&&![newActions containsString:@"before_manual_reset"]);
+        puts("PASS: action audit stays silent while OFF; manual reset removes old files and memory and permits fresh recording");
         printf("PASS: track journal records per-track state, progress, errors and core snapshots\n");
     }
     return 0;

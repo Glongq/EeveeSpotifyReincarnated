@@ -1,5 +1,6 @@
 #import "OfflineFlags.h"
 #import "OfflineLimits.h"
+#import "DiagnosticTrace.h"
 #import <objc/runtime.h>
 #include <stdatomic.h>
 
@@ -20,6 +21,10 @@ static NSDictionary *rewrite(id value) {
     if (!needsChange) return dict;
     NSMutableDictionary *copy = [dict mutableCopy];
     [copy addEntriesFromDictionary:flags];
+    if(SAPTraceIsActive()) {
+        NSMutableDictionary *before=[NSMutableDictionary dictionary];for(NSString *key in flags)before[key]=dict[key]?:NSNull.null;
+        SAP_TRACE("flags","dictionary_input_rewritten",SAPTraceCurrentOperation(),@{@"before":before,@"passed_to_original":flags,@"native_storage_readback_confirmed":@NO,@"server_origin_proven":@NO});
+    }
     atomic_fetch_add(&patchedDictionaries, 1);
     return copy;
 }
@@ -31,10 +36,12 @@ static BOOL methodInfo(Class cls, SEL sel, unsigned arguments, const char *retur
     return type[0] && strchr(returns, type[0]) != NULL;
 }
 static void replace(Class cls, SEL sel, Method method, id block, NSMutableArray *list) {
+    IMP previous=method_getImplementation(method);
     IMP replacement = imp_implementationWithBlock(block);
     if (!class_addMethod(cls, sel, replacement, method_getTypeEncoding(method)))
         class_replaceMethod(cls, sel, replacement, method_getTypeEncoding(method));
     [list addObject:[NSString stringWithFormat:@"%@.%@", NSStringFromClass(cls), NSStringFromSelector(sel)]];
+    SAPTraceRegisterHook(cls,sel,replacement,previous);
 }
 
 void SAPInstallOfflineFlags(void) {
@@ -52,9 +59,10 @@ void SAPInstallOfflineFlags(void) {
                 IMP original = method_getImplementation(method);
                 if ([name isEqual:@"stringForKey:"]) coreRead = (void *)original;
                 replace(cls, sel, method, ^id(id self, NSString *key) {
+                    SAPTraceHookCalled(object_getClass(self),sel);
                     coreState = self;
                     NSString *forced = [key isKindOfClass:NSString.class] ? flags[key] : nil;
-                    if (forced) { atomic_fetch_add(&forcedReads, 1); return forced; }
+                    if (forced) { atomic_fetch_add(&forcedReads, 1);SAP_TRACE("flags","getter_override_returned",SAPTraceCurrentOperation(),@{@"key":key,@"returned":forced,@"original_getter_called":@NO,@"server_origin_proven":@NO});return forced; }
                     return ((id (*)(id, SEL, id))original)(self, sel, key);
                 }, list);
             }
@@ -62,8 +70,9 @@ void SAPInstallOfflineFlags(void) {
             if (methodInfo(cls, boolSel, 3, "Bc", &method)) {
                 IMP original = method_getImplementation(method);
                 replace(cls, boolSel, method, ^BOOL(id self, NSString *key) {
+                    SAPTraceHookCalled(object_getClass(self),boolSel);
                     NSString *forced = [key isKindOfClass:NSString.class] ? flags[key] : nil;
-                    if (forced) { atomic_fetch_add(&forcedReads, 1); return forced.boolValue; }
+                    if (forced) { atomic_fetch_add(&forcedReads, 1);SAP_TRACE("flags","getter_override_returned",SAPTraceCurrentOperation(),@{@"key":key,@"returned":@(forced.boolValue),@"original_getter_called":@NO,@"server_origin_proven":@NO});return forced.boolValue; }
                     return ((BOOL (*)(id, SEL, id))original)(self, boolSel, key);
                 }, list);
             }
@@ -71,8 +80,9 @@ void SAPInstallOfflineFlags(void) {
             if (methodInfo(cls, intSel, 3, "qQ", &method)) {
                 IMP original = method_getImplementation(method);
                 replace(cls, intSel, method, ^NSInteger(id self, NSString *key) {
+                    SAPTraceHookCalled(object_getClass(self),intSel);
                     NSString *forced = [key isKindOfClass:NSString.class] ? flags[key] : nil;
-                    if (forced) { atomic_fetch_add(&forcedReads, 1); return forced.integerValue; }
+                    if (forced) { atomic_fetch_add(&forcedReads, 1);SAP_TRACE("flags","getter_override_returned",SAPTraceCurrentOperation(),@{@"key":key,@"returned":@(forced.integerValue),@"original_getter_called":@NO,@"server_origin_proven":@NO});return forced.integerValue; }
                     return ((NSInteger (*)(id, SEL, id))original)(self, intSel, key);
                 }, list);
             }
@@ -81,6 +91,7 @@ void SAPInstallOfflineFlags(void) {
                 if (!methodInfo(cls, sel, 3, "v", &method)) continue;
                 IMP original = method_getImplementation(method);
                 replace(cls, sel, method, ^(id self, NSDictionary *dict) {
+                    SAPTraceHookCalled(object_getClass(self),sel);
                     coreState = self;
                     ((void (*)(id, SEL, id))original)(self, sel, rewrite(dict));
                 }, list);
@@ -90,6 +101,7 @@ void SAPInstallOfflineFlags(void) {
                 if (!methodInfo(cls, sel, 2, "@", &method)) continue;
                 IMP original = method_getImplementation(method);
                 replace(cls, sel, method, ^id(id self) {
+                    SAPTraceHookCalled(object_getClass(self),sel);
                     coreState = self;
                     return rewrite(((id (*)(id, SEL))original)(self, sel));
                 }, list);
@@ -99,6 +111,7 @@ void SAPInstallOfflineFlags(void) {
                 if (!methodInfo(cls, sel, 3, "@", &method)) continue;
                 IMP original = method_getImplementation(method);
                 replace(cls, sel, method, ^id(id self, void *argument) {
+                    SAPTraceHookCalled(object_getClass(self),sel);
                     coreState = self;
                     return rewrite(((id (*)(id, SEL, void *))original)(self, sel, argument));
                 }, list);
@@ -119,5 +132,5 @@ NSDictionary *SAPOfflineFlagsReport(void) {
     return @{@"enabled": @YES, @"client_flags": flags ?: @{}, @"installed_hooks": installed ?: @[],
         @"core_values_unmodified_getter": actual,
         @"forced_reads": @(atomic_load(&forcedReads)), @"patched_dictionaries": @(atomic_load(&patchedDictionaries)),
-        @"reminder_disabled_in_package": @YES};
+        @"reminder_handling": @"guarded_native_adapter", @"host_mod": @"EeveeSpotify"};
 }

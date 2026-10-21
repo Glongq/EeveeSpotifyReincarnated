@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import patch_key_request_mode as keys
 import patch_native_restrictions as restrictions
 import patch_offline as reminder
-from prepare_executable import prepare
+from prepare_executable import prepare_download_patches as prepare
 
 
 def macho(segments, size):
@@ -46,31 +46,34 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual(provenance['release'], 'spotify-ui-v7')
         self.assertFalse(provenance['wav_capture_enabled'])
         expected = provenance['source_sha256_by_file']
-        actual_names = {'src/' + p.name for p in (ROOT / 'src').iterdir() if p.is_file()}
-        self.assertEqual(actual_names, set(expected) | {'src/NativeReadiness.h'})
         for name, digest in expected.items():
-            with self.subTest(file=name):
-                if name not in ('src/NativeOffline.m', 'src/Localization.h', 'src/Localization.m', 'src/DownloadSettingsUI.m', 'src/AudioProbeUI.m', 'src/TrackJournal.m'):
-                    self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
-                if name != 'src/DownloadSettingsUI.m':
-                    self.assertEqual(digest, previous['source_sha256_by_file'][name])
-        for name, digest in provenance['eevee_source_sha256_by_file'].items():
-            with self.subTest(file=name):
-                self.assertEqual(hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest(), digest)
+            if name != 'src/DownloadSettingsUI.m':
+                self.assertEqual(digest, previous['source_sha256_by_file'][name])
 
-    def test_v73_changes_are_limited_to_readiness_and_presentation(self):
+    def test_historical_v73_snapshot(self):
         previous = json.loads((ROOT / 'provenance-ui-v7.json').read_text())
         current = json.loads((ROOT / 'provenance-ui-v7.3.json').read_text())
-        expected = current['source_sha256_by_file']
-        self.assertEqual({'src/' + f.name for f in (ROOT / 'src').iterdir() if f.is_file()}, set(expected))
-        for name, digest in expected.items():
-            self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+        for name, digest in current['source_sha256_by_file'].items():
             if name not in ('src/NativeOffline.m', 'src/NativeReadiness.h', 'src/Localization.h', 'src/Localization.m', 'src/DownloadSettingsUI.m', 'src/AudioProbeUI.m', 'src/TrackJournal.m'):
                 self.assertEqual(digest, previous['source_sha256_by_file'][name])
+
+    def test_pixie_v1_snapshot(self):
+        current = json.loads((ROOT / 'provenance-pixie-v1.json').read_text())
+        expected = current['source_sha256_by_file']
+        self.assertEqual(current['release'], 'pixie-v1')
+        self.assertEqual({'src/' + f.name for f in (ROOT / 'src').iterdir() if f.is_file()}, set(expected))
+        for name, digest in expected.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+        for name, digest in current['eevee_source_sha256_by_file'].items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest(), digest)
 
     def test_generated_headers(self):
         self.assertEqual((ROOT / 'src/NativeRestrictionsPatch.h').read_text(), restrictions.guard_header())
         self.assertEqual((ROOT / 'src/OfflineLimits.h').read_text(), restrictions.limits_header())
+        import patch_native_trace
+        self.assertEqual((ROOT / 'src/NativeTracePatch.h').read_text(), patch_native_trace.header())
 
     def test_python_sources_compile(self):
         for path in (ROOT / 'tools').glob('*.py'):

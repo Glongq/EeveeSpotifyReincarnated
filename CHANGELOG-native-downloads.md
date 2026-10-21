@@ -1,5 +1,17 @@
 # Native Downloads changelog
 
+## Eevee-Pixie v1 — 2026-10-21
+
+- Port Pixie menu: Download, Download compatibility, Status, Diagnostics and Me.
+- Add current-track album downloads, a single Send log export and complete journal/trace reset.
+- Add explicit compatibility reads and confirmed offline-device management with readback.
+- Adapt optional native-boundary traces to the guarded Spotify 9.1.88 image; keep fixed request mode 0 and native scheduling.
+- Preserve header controls during transient model updates and keep settings above the mini-player.
+- Use English-only Pixie Download Manager branding, Eevee-Pixie v1 footer and Spotify-9.1.88-Eevee-Pixie-v1 filenames.
+- Reset reused settings-cell interaction so offline-slot checks cannot disable unrelated menu buttons.
+- Maintainer reports the fixed menu works in LiveContainer and full pre-rename fixed v1 jailbreak testing; renamed binaries have local validation.
+- Pixie rename changes display names only; native download behavior, identifiers and internal log paths are retained.
+
 ## Source revision UI v7 — 2026-10-19
 
 - Publish the current UI v7 sources and retain v5/v6 provenance snapshots.

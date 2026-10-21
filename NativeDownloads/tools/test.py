@@ -12,6 +12,14 @@ build.mkdir(parents=True, exist_ok=True)
 
 
 def run(*args):
+    args=list(args)
+    if args[:2]==["xcrun","clang"] and "-c" not in args:
+        paths=[Path(str(x)) for x in args if str(x).endswith((".m",".c"))]
+        needs_trace=any(p.is_file() and ('"DiagnosticTrace.h"' in p.read_text() or p.name=="Diagnostics.m") for p in paths)
+        if needs_trace:
+            if "-fobjc-arc" not in args:args.insert(2,"-fobjc-arc")
+            for source in ["src/DiagnosticTrace.m","src/NativeKeyTrace.m","src/WireProto.m","tests/trace_platform_stub.m"]:
+                if source not in args:args.insert(2,source)
     subprocess.run([str(x) for x in args], check=True)
 
 
@@ -95,3 +103,21 @@ run(sys.executable, ROOT / "tools/test_native_restrictions.py")
 run("xcrun", "clang", "-fobjc-arc", "-Isrc", "src/Localization.m", "tests/localization.m", "-framework", "Foundation", "-o", build / "localization")
 run(build / "localization", "English", "-AppleLanguages", "(en-GB)")
 run(build / "localization", "English", "-AppleLanguages", "(ru-RU)")
+
+for name,sources in [
+    ("support_log", ["src/SupportLog.m", "tests/support_log.m"]),
+    ("download_compatibility", ["src/DownloadCompatibility.m", "src/WireProto.m", "tests/download_compatibility.m"]),
+    ("offline_devices", ["src/OfflineDevices.m", "src/WireProto.m", "tests/offline_devices.m"]),
+]:
+    run("xcrun", "clang", "-fobjc-arc", "-std=gnu11", "-Isrc", "-DSAP_TESTING",
+        "-fsanitize=address,undefined", *sources, "-framework", "Foundation", "-o", build/name)
+    run(build/name)
+run("xcrun", "clang", "-std=gnu11", "-Isrc", "tests/key_mode_policy.c", "-o", build/"key_mode_policy")
+run(build/"key_mode_policy")
+
+run("xcrun","clang","-fobjc-arc","-std=gnu11","-Isrc","-DSAP_TESTING",
+    "-fsanitize=address,undefined","src/DiagnosticTrace.m","src/NativeKeyTrace.m","src/WireProto.m",
+    "tests/diagnostic_trace.m","-framework","Foundation","-o",build/"diagnostic_trace")
+for scenario in ["normal","rotation","loss","write_error","reset","off_reset"]:
+    run(build/"diagnostic_trace",scenario)
+run(sys.executable,ROOT/"tests/native_trace_patch.py")

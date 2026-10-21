@@ -1,15 +1,26 @@
-# Sprite Download Manager — 7.3
+# Pixie Download Manager — Eevee-Pixie v1
 
-This directory contains the native-download extension for this unofficial fork.
-The manager is English-only, named **Sprite Download Manager**, with **Version 7.3**
-in its settings footer. IPA outputs use `Spotify-9.1.88-Eevee+Sprite.ipa`.
-v7.3 fixes preparation/readiness checks for both the companion IPA overlay and
-unified jailbreak core. `ready` now requires the verified quota trampoline, key
-request mode 0 and target quotas. Unsupported or incompletely patched builds
-report failure before the manual download request is sent. Native queueing,
-transport, callbacks, cache and persistence remain v7 implementations.
-`provenance-ui-v7.json` preserves the historical source hashes;
-`provenance-ui-v7.3.json` records this readiness revision.
+English-only manager for the exact Spotify 9.1.88 ARM64 image, integrated into
+EeveeSpotify 7.0.0. IPA/ZIP basename: `Spotify-9.1.88-Eevee-Pixie-v1`.
+The footer displays **Eevee-Pixie v1**.
+
+This revision ports the menu and applicable fixes from [Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie)
+commit `0e00970f5ad2decc2aa7ed87286c96f2013785ed`, plus local journal/trace-reset
+race fixes. It does not use Pixie's Spotify 9.1.90 addresses. Exact 9.1.88 guards,
+the v7.3 readiness rule, native queue, storage and fixed key-request mode 0 remain.
+
+- Download current track or its album; check status or cancel the manual request.
+- Read compatibility state; review devices and confirm individual offline-registration changes.
+- Export one `SpriteSupportLog.json` from the root or manager menu.
+- Reset journal files, trace files and retained history. Diagnostics default off.
+- Optional passive native request/success/failure traces preserve the native ABI
+  and do not read audio-key material. The mode stays fixed; no runtime selector.
+- Reuse already observed Eevee authentication headers in memory for explicit
+  device requests; no persistent token store or background token polling.
+
+[Source hashes](provenance-pixie-v1.json) identify the current revision. Previous
+v7/v7.3 manifests remain historical snapshots. [Release notes](../RELEASE_NOTES-pixie-v1.md)
+record the port and its testing limits.
 
 Implementation, integration, documentation and local builds: **OpenAI Codex**,
 under **Glongq**'s direction. Device testing and feedback: Glongq.
@@ -17,8 +28,7 @@ Upstream EeveeSpotify contributors retain credit for the base project.
 
 ## Tested configuration
 
-These are historical baseline results. The v7.3 changes have local validation
-only and have not yet been verified on a real iPhone or jailbreak.
+The maintainer reports successful LiveContainer testing of the fixed v1 menu and full jailbreak testing of the pre-rename fixed v1 packages. The Pixie rename changes display strings only; these renamed binaries have local signature/package/UI validation. The jailbreak and iOS versions for the reported jailbreak test were not supplied.
 
 - EeveeSpotify base: 7.0.0.
 - Spotify: **9.1.88**, ARM64 Mach-O UUID `f51dbd933b8f3a12943196c606e3afc2`.
@@ -51,19 +61,13 @@ Spotify IPA, or an already modified v1–v4 IPA, is not the input for this comma
 
 ```sh
 python3 NativeDownloads/tools/test_patchers.py
-THEOS_PACKAGE_SCHEME=rootless make -j2 all FINALPACKAGE=1
-python3 NativeDownloads/tools/build.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa --eevee-dylib .theos/obj/EeveeSpotify.dylib
+THEOS_PACKAGE_SCHEME=rootless make -j2 all FINALPACKAGE=1 NATIVE_DOWNLOADS_JAILBREAK=1
+python3 NativeDownloads/tools/prepare_ipa.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa Spotify-9.1.88-Eevee-Pixie-v1.ipa --core .theos/obj/EeveeSpotify.dylib
 ```
 
-Outputs are in `NativeDownloads/outputs/`:
-
-- `Spotify-9.1.88-Eevee+Sprite.ipa`: output of a current source build; sign/install with your installation tool. The previously published v4 has the recorded SideStore/LiveContainer verification.
-- `SpotifyAudioProbe.dylib`: the companion library.
-- `build-manifest.json`: input/output hashes, source hashes and patch details.
-
-Use `--output-dir /absolute/path/to/output` to choose another output directory.
+This produces `Spotify-9.1.88-Eevee-Pixie-v1.ipa` and its `.build.json` manifest. Sign/install the IPA with your installation tool. Choose another output location with the positional output argument. The legacy `tools/build.py` companion-overlay route requires an upstream-only Eevee core; it rejects a unified native core to prevent two backends.
 The input file is never overwritten. No Spotify binary or IPA is included in Git.
-The builder rejects unrecognised or already patched native binaries. It verifies
+The builder rejects unrecognised binaries; exact prepared patches are verified idempotently. It verifies
 archive integrity, native instruction guards, generated quota constants, dyld
 imports, and source hashes. The output is ad-hoc signed for packaging; installation
 still requires the receiving installation tool's normal signing process.
@@ -111,7 +115,7 @@ python3 NativeDownloads/tools/prepare_ipa.py injected.ipa prepared.ipa
 To build from an existing compatible Eevee base and a newly compiled unified core:
 
 ```sh
-python3 NativeDownloads/tools/prepare_ipa.py base.ipa Spotify-9.1.88-Eevee+Sprite.ipa --core /path/to/rootless/EeveeSpotify.dylib
+python3 NativeDownloads/tools/prepare_ipa.py base.ipa Spotify-9.1.88-Eevee-Pixie-v1.ipa --core /path/to/rootless/EeveeSpotify.dylib
 ```
 
 This builder verifies both original guard windows or exact known prepared bytes,
@@ -125,7 +129,7 @@ engine; see [jailbreak packages](jailbreak/README.md).
 ## Use
 
 - Use Spotify's regular album or playlist Download button for native bulk downloads.
-- Open **EeveeSpotify → Sprite Download Manager** for the single-track action and status.
+- Open **EeveeSpotify → Pixie Download Manager** for the single-track action and status.
 - Enable diagnostics there when collecting a report. Diagnostics are off by default.
 - Downloads remain in Spotify's own offline storage. This release does not export
   MP3/WAV files and does not need to play every track before downloading it.

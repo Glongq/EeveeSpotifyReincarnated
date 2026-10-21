@@ -30,7 +30,7 @@ ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
 EeveeSpotify_FILES += $(wildcard NativeDownloads/src/*.m NativeDownloads/src/*.c) NativeDownloads/jailbreak/Runtime.m modules/fishhook/fishhook.c
 EeveeSpotify_CFLAGS += -INativeDownloads/src -Imodules/fishhook -DSAP_ENABLE_WAV_CAPTURE=0
 EeveeSpotify_SWIFTFLAGS += -D NATIVE_DOWNLOADS_JAILBREAK
-EeveeSpotify_FRAMEWORKS += AudioToolbox AVFAudio AVFoundation CoreMedia CoreGraphics
+EeveeSpotify_FRAMEWORKS += AudioToolbox AVFAudio AVFoundation CoreMedia CoreGraphics Network
 endif
 
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
@@ -50,7 +50,7 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 
 ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
 before-package:: $(THEOS_STAGING_DIR)/DEBIAN/control
-	sed -i.bak -e 's/^Name:.*/Name: EeveeSpotify + Sprite Download Manager/' -e 's/^Maintainer:.*/Maintainer: Glongq/' -e 's/^Description:.*/Description: Unofficial EeveeSpotify fork with English-only Sprite Download Manager 7.3. Codex-assisted build./' $(THEOS_STAGING_DIR)/DEBIAN/control
+	sed -i.bak -e 's/^Name:.*/Name: EeveeSpotify + Pixie Download Manager/' -e 's/^Maintainer:.*/Maintainer: Glongq/' -e 's/^Description:.*/Description: Unofficial EeveeSpotify fork with English-only Pixie Download Manager v1. Codex-assisted build./' $(THEOS_STAGING_DIR)/DEBIAN/control
 	rm -f $(THEOS_STAGING_DIR)/DEBIAN/control.bak
 	mkdir -p $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify
 	cp LICENSE $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify/COPYING

@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import "PlayerTrace.h"
 #import "WireProto.h"
+#import "DiagnosticTrace.h"
 #include <assert.h>
 static NSUInteger getterCalls;
 static NSThread *observerThread;
@@ -42,8 +43,10 @@ int main(void){@autoreleasepool{
     __block NSUInteger emitted=0;
     SAPPlayerTraceSetSink(^(NSDictionary *event){emitted++;});
     SAPPlayerTraceSetActive(YES);
-    SAPObservePlayerRequest(service,@"PreparePlay",prepare());SAPPlayerTraceDrainForTesting();
+    SAPTraceID operation=SAPTraceBegin(@"playback_test",@"fixture",@{});
+    SAPTraceWithOperation(operation,^{SAPObservePlayerRequest(service,@"PreparePlay",prepare());});SAPPlayerTraceDrainForTesting();
     NSDictionary *e=[SAPPlayerTraceReport()[@"events"] lastObject];
+    assert([e[@"trace_operation_id"]unsignedLongLongValue]==operation);
     assert([e[@"context_pages"] intValue]==1 && [e[@"context_explicit_tracks"] intValue]==1);
     assert([e[@"initially_paused_effective"] boolValue] && [e[@"prefetch_level_effective"] intValue]==1);
     assert([e[@"license_present"] boolValue] && [e[@"license_bytes"] intValue]==14);
@@ -81,13 +84,18 @@ int main(void){@autoreleasepool{
     SAPPlayerTraceSetSink(^(NSDictionary *event){emitted++;});
     for(unsigned i=0;i<150;i++){SAPObservePlayerRequest(service,@"PreparePlay",prepare());SAPPlayerTraceDrainForTesting();}
     assert([SAPPlayerTraceReport()[@"events"] count]==120);
-    SAPPlayerTraceSetActive(NO);prior=emitted;NSUInteger oldCalls=getterCalls;
+    SAPPlayerTraceSetActive(NO);
+    assert([SAPPlayerTraceReport()[@"active"]boolValue]);
+    SAPObservePlayerRequest(service,@"DeleteSession",NSData.data);SAPPlayerTraceDrainForTesting();
+    assert(emitted>0);
+    SAPDiagnosticsSetEnabled(false);SAPPlayerTraceSetActive(NO);prior=emitted;NSUInteger oldCalls=getterCalls;
     SAPObservePlayerState(state);SAPObservePlayerRequest(service,@"PreparePlay",prepare());SAPPlayerTraceDrainForTesting();
     assert(emitted==prior && getterCalls==oldCalls && ![SAPPlayerTraceReport()[@"active"] boolValue]);
     assert(!wrongGetterThread);
     SAPPlayerTraceReset();
     assert([SAPPlayerTraceReport()[@"events"] count]==0 && [SAPPlayerTraceReport()[@"event_count"] intValue]==0);
     assert(![SAPPlayerTraceReport()[@"active"] boolValue]);
+    SAPDiagnosticsSetEnabled(true);
     // Reset from the sink while older work is queued. Those observations must
     // be discarded, and an explicit new activation must start at sequence1.
     SAPPlayerTraceSetActive(YES);

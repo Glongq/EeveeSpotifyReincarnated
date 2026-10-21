@@ -23,6 +23,35 @@
 - (void)URLSession:(id)session task:(id)task didCompleteWithError:(NSError *)error { self.completions++; self.error = error; }
 @end
 
+// Vitrine holds the body, then delivers its full rewritten/cached response by
+// calling the delegate selector again during completion or a 304 response.
+@interface SPTDataLoaderService : NSObject
+@property(nonatomic,strong) NSMutableData *received,*held;
+@property(nonatomic,strong) NSData *cached;
+@property(nonatomic) BOOL delivering,served;
+@property(nonatomic) unsigned completions;
+- (void)URLSession:(id)session dataTask:(id)task didReceiveData:(NSData *)data;
+- (void)URLSession:(id)session task:(id)task didCompleteWithError:(NSError *)error;
+- (void)URLSession:(id)session dataTask:(id)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSInteger))handler;
+@end
+@implementation SPTDataLoaderService
+- (instancetype)init {if((self=[super init])){_received=[NSMutableData data];_held=[NSMutableData data];}return self;}
+- (void)URLSession:(id)session dataTask:(id)task didReceiveData:(NSData *)data {
+    [(self.delivering?self.received:self.held) appendData:data];
+}
+- (void)URLSession:(id)session task:(id)task didCompleteWithError:(NSError *)error {
+    if(!self.served){self.delivering=YES;[self URLSession:session dataTask:task didReceiveData:[self.held copy]];self.delivering=NO;}
+    self.completions++;
+}
+- (void)URLSession:(id)session dataTask:(id)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSInteger))handler {
+    if([(NSHTTPURLResponse *)response statusCode]==304 && self.cached){
+        self.served=YES;self.delivering=YES;
+        [self URLSession:session dataTask:task didReceiveData:self.cached];self.delivering=NO;
+    }
+    if(handler)handler(1);
+}
+@end
+
 static NSData *join(NSData *a, NSData *b) { NSMutableData *d = [a mutableCopy]; [d appendData:b]; return d; }
 static NSData *entry(NSString *name, NSData *value) { return SAPProtoBytes(1, join(SAPProtoBytes(1, [name dataUsingEncoding:NSUTF8StringEncoding]), SAPProtoBytes(2, value))); }
 static NSData *attributes(NSData *data, BOOL bootstrap) {
@@ -82,7 +111,7 @@ int main(void) { @autoreleasepool {
         [NSData dataWithBytes:(uint8_t[]){0} length:1], SAPProtoInteger(1, 10), NSData.data])
         assert([SAPRewriteOfflineConfig(bad, NO) isEqual:bad]);
     SAPInstallOfflineConfig(); SAPInstallOfflineConfig();
-    assert([SAPOfflineConfigReport()[@"delegates"] count] == 1);
+    assert([SAPOfflineConfigReport()[@"delegates"] count] == 2);
     SPTCoreURLSessionDataDelegate *delegate = [SPTCoreURLSessionDataDelegate new];
     TestTask *t = task(@"https://spclient.wg.spotify.com/bootstrap/v1/bootstrap", 200);
     [delegate URLSession:nil dataTask:t didReceiveData:[bootstrap subdataWithRange:NSMakeRange(0, 7)]];
@@ -129,5 +158,16 @@ int main(void) { @autoreleasepool {
     [delegate URLSession:nil dataTask:t didReceiveData:customize];
     [delegate URLSession:nil task:t didCompleteWithError:nil];assert([delegate.received isEqual:customize]);
     puts("PASS: cached positive/negative HTTP classifications follow redirects");
+    SPTDataLoaderService *vitrine=[SPTDataLoaderService new];
+    t=task(@"https://spclient.wg.spotify.com/ucs/v1/customize",200);
+    [vitrine URLSession:nil dataTask:t didReceiveData:customize];
+    [vitrine URLSession:nil task:t didCompleteWithError:nil];
+    assert(vitrine.completions==1 && [vitrine.received isEqual:SAPRewriteOfflineConfig(customize,NO)]);
+    vitrine=[SPTDataLoaderService new];vitrine.cached=customize;
+    t=task(@"https://spclient.wg.spotify.com/ucs/v1/customize",304);
+    [vitrine URLSession:nil dataTask:t didReceiveResponse:t.response completionHandler:nil];
+    [vitrine URLSession:nil task:t didCompleteWithError:nil];
+    assert(vitrine.completions==1 && [vitrine.received isEqual:SAPRewriteOfflineConfig(customize,NO)]);
+    puts("PASS: Vitrine's full-body and cached-304 reentrant deliveries reach Spotify once with offline attributes");
     puts("PASS: exact bootstrap/customize wire paths; original value types and unknown/unrelated fields; malformed/overflow passthrough; chunk reassembly; errors/304; 4 MiB cap; no network calls/timers");
 } }
