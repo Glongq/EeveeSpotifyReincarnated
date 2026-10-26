@@ -1,8 +1,6 @@
 #pragma once
 #import <Foundation/Foundation.h>
 
-// Pixie uses English regardless of Spotify's or iOS's selected language.
-// Discard the legacy translation before compilation, including its string data.
-#define SAPL(legacyTranslation, english) (english)
-#define SAPManagerName @"Pixie Download Manager"
-#define SAPManagerVersion @"1"
+// Pixie's interface is English-only, regardless of Spotify's preferred language.
+// Keep the paired-string API compatible with existing callers.
+NSString *SAPL(NSString *russian,NSString *english);

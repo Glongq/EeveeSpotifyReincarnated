@@ -4,7 +4,7 @@
 #include <assert.h>
 static BOOL active;
 static NSUInteger calls;
-static BOOL offlineNoSlots,missingReply,silentReply;
+static BOOL offlineNoSlots,missingReply,silentReply,invalidLocal;
 static void (^lateReply)(NSData *,NSString *);
 void SAPJournalNoteAction(NSString *name,NSDictionary *facts) {}
 BOOL SAPTrackDownloadActive(void) {return active;}
@@ -20,17 +20,22 @@ void SAPCallReadOnlyService(NSString *service,NSString *method,NSData *payload,v
         if(silentReply)lateReply=[reply copy];
         else reply(missingReply?nil:SAPProtoInteger(5,1),missingReply?@"timeout":nil);
     }
+    else if([method isEqual:@"GetLocalDevice"]&&!invalidLocal)reply(join(SAPProtoBytes(1,[@"exact-device" dataUsingEncoding:NSUTF8StringEncoding]),SAPProtoBytes(2,[@"exact-cache" dataUsingEncoding:NSUTF8StringEncoding])),nil);
     else reply(NSData.data,nil);
 }
 int main(void) {@autoreleasepool {
     __block NSDictionary *result;
     SAPRefreshDownloadCompatibility(^(NSDictionary *value){result=value;});
     assert(result && calls==6);assert(SAPModeChangeBlockReason(result)==nil);
+    assert([result[@"sources"][@"local_device"][@"read_status"]isEqual:@"received"]);
+    assert([result[@"sources"][@"local_device"][@"device"][@"device_id"]isEqual:@"exact-device"]);
+    invalidLocal=YES;SAPRefreshDownloadCompatibility(^(NSDictionary *value){result=value;});
+    assert([result[@"sources"][@"local_device"][@"read_status"]isEqual:@"invalid_response"]&& !result[@"sources"][@"local_device"][@"device"]);invalidLocal=NO;
     active=YES;assert([SAPModeChangeBlockReason(result)containsString:@"active"]);active=NO;
     offlineNoSlots=YES;
     SAPRefreshDownloadCompatibility(^(NSDictionary *value){result=value;});
     assert([SAPModeChangeBlockReason(result)containsString:@"0 free"]);
-    assert([SAPDownloadCompatibilityText(result)containsString:@"free_licenses=0, max_licenses=5"]);
+    assert([SAPDownloadCompatibilityText(result)containsString:@"0 of 5"]);
     assert([result[@"server_response_observed"]isEqual:@NO]);
     offlineNoSlots=NO;missingReply=YES;
     SAPRefreshDownloadCompatibility(^(NSDictionary *value){result=value;});

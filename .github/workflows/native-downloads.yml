@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: 'Optional HTTPS URL to your unmodified EeveeSpotify 7.0.0 / Spotify 9.1.88 IPA; leave empty for validation only'
+        description: 'Optional HTTPS URL to your unmodified EeveeSpotify 7.0.0 / Spotify 9.1.90 IPA; leave empty for validation only'
         required: false
         default: ''
         type: string
@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Validate source provenance and guarded patchers
-        run: python3 NativeDownloads/tools/test_patchers.py
+        run: python3 NativeDownloads/tools/validate_eevee_9190.py
 
   build-ipa:
     if: github.event_name == 'workflow_dispatch' && inputs.ipa_url != ''
@@ -61,13 +61,19 @@ jobs:
             case "$EEVEE_DYLIB_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
             curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$EEVEE_DYLIB_URL" --output "$RUNNER_TEMP/EeveeSpotify.dylib"
             args+=(--eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib")
+          else
+            echo 'Supply an Eevee library rebuilt with the current Pixie artist controls.'
+            exit 1
           fi
-          python3 NativeDownloads/tools/build.py "$RUNNER_TEMP/source.ipa" "${args[@]}"
+          mkdir -p NativeDownloads/outputs/eevee-pixie-v1.3
+          python3 NativeDownloads/tools/build_eevee_9190.py "$RUNNER_TEMP/source.ipa" "${args[@]}" \
+            --output NativeDownloads/outputs/eevee-pixie-v1.3/Spotify-9.1.90-EeveeSpotify-Pixie-v1.3.ipa \
+            > NativeDownloads/outputs/eevee-pixie-v1.3/build-report.json
       - uses: actions/upload-artifact@v4
         with:
-          name: eevee-pixie-v1-native-downloads
+          name: eevee-pixie-v1.3-native-downloads
           if-no-files-found: error
           retention-days: 7
           path: |
-            NativeDownloads/outputs/Spotify-9.1.88-Eevee-Pixie-v1.ipa
-            NativeDownloads/outputs/build-manifest.json
+            NativeDownloads/outputs/eevee-pixie-v1.3/Spotify-9.1.90-EeveeSpotify-Pixie-v1.3.ipa
+            NativeDownloads/outputs/eevee-pixie-v1.3/build-report.json

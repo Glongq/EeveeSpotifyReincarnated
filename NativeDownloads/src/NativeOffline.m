@@ -1,7 +1,7 @@
 #import "Localization.h"
 #import "NativeOffline.h"
 #import "NativeRestrictionsPatch.h"
-#import "NativeReadiness.h"
+#import "NativeKeyModePatch.h"
 #import "OfflineLimits.h"
 #import "TrackJournal.h"
 #import "Diagnostics.h"
@@ -11,6 +11,8 @@
 #import "KeyModePolicy.h"
 #import "DiagnosticTrace.h"
 #import "NativeTracePatch.h"
+#import "NativeSetupStatus.h"
+#import "NativeAlbumCommand.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -33,9 +35,25 @@ static void *(*originalInit)(void *,SEL,void *,void *,void *,void *);
 static unsigned long long (*originalStateForTrack)(id,SEL,id);
 static os_unfair_lock stateLock=OS_UNFAIR_LOCK_INIT;
 static NSDictionary *snapshot;
-static const uint8_t supportedUUID[]={0xf5,0x1d,0xbd,0x93,0x3b,0x8f,0x3a,0x12,0x94,0x31,0x96,0xc6,0x06,0xe3,0xaf,0xc2};
-static const uint8_t setterCode[]={0xe6,0x03,0x1e,0xaa,0x37,0xf1,0xf5,0x95,0xfe,0x03,0x06,0xaa,0xfd,0x7b,0x11,0xa9};
-static const uintptr_t setterOffset=0x1f94658;
+static const uint8_t supportedUUID[]={0xfb,0xce,0x22,0xc1,0x7e,0x1b,0x3e,0x0d,0x9b,0xe8,0x66,0xff,0x92,0x91,0x94,0x3e};
+static const uint8_t setterCode[]={0xe6,0x03,0x1e,0xaa,0x8f,0x3e,0xf4,0x95,0xfe,0x03,0x06,0xaa,0xfd,0x7b,0x11,0xa9};
+static const uintptr_t setterOffset=0x1d1debc;
+static atomic_int requestedKeyMode=ATOMIC_VAR_INIT(0);
+static atomic_int lastSelectorMode=ATOMIC_VAR_INIT(-1);
+static atomic_uint_fast64_t selectorReads[2];
+static NSString *const keyModePreference=@"PixieOfflineKeyRequestMode";
+static int configuredKeyMode(void) {return atomic_load_explicit(&requestedKeyMode,memory_order_relaxed);}
+
+// Called by the pre-installed, verified Spotify call-site trampoline. Its hot
+// path only updates atomic counters. Reports read configuredKeyMode directly,
+// so opening settings never manufactures a selector invocation.
+__attribute__((visibility("default"))) int SAPCurrentKeyRequestMode(void) {
+    int mode=configuredKeyMode();
+    atomic_fetch_add_explicit(&selectorReads[mode==1?1:0],1,memory_order_relaxed);
+    atomic_store_explicit(&lastSelectorMode,mode,memory_order_relaxed);
+    return mode;
+}
+
 @interface SAPNativePreparation : NSObject {
     atomic_bool _finished;
 }
@@ -53,9 +71,9 @@ static const uintptr_t setterOffset=0x1f94658;
     SAP_TRACE("native_setup","completed",self.traceOperation,@{@"local_prepared":@(ready),@"authorization_checked":@NO,@"reason":reason?:@"",
         @"before":report[@"before"]?:@{},@"after":report[@"after"]?:@{},@"changed":report[@"changed"]?:@NO});
     NSMutableDictionary *value=[report mutableCopy]?:[NSMutableDictionary dictionary];
-    value[@"ready"]=@(ready);value[@"local_prepared"]=@(ready);value[@"authorization_checked"]=@NO;value[@"reason"]=reason?:@"";
+    value[@"local_prepared"]=@(ready);value[@"authorization_checked"]=@NO;value[@"reason"]=reason?:@"";
     NSMutableDictionary *quota=[(value[@"after"]?:value[@"before"]) mutableCopy]?:[NSMutableDictionary dictionary];
-    quota[@"ready"]=@(ready);quota[@"local_prepared"]=@(ready);quota[@"authorization_checked"]=@NO;quota[@"reason"]=reason?:@"";quota[@"changed"]=value[@"changed"]?:@NO;
+    quota[@"local_prepared"]=@(ready);quota[@"authorization_checked"]=@NO;quota[@"reason"]=reason?:@"";quota[@"changed"]=value[@"changed"]?:@NO;
     SAPJournalNoteQuota(quota);
     SAPJournalNoteAction(@"native_setup_result",@{@"local_prepared":@(ready),@"authorization_checked":@NO,@"reason":reason?:@"",
         @"before":value[@"before"]?:@{},@"after":value[@"after"]?:@{},
@@ -87,38 +105,94 @@ static BOOL supportedImage(uintptr_t image) {
     }
     return NO;
 }
-// This port keeps the proven fixed mode-0 call; it never installs a selector
-// that could silently change the request argument from a saved preference.
+// 2 means the signed runtime selector is installed; 0/1 are older fixed
+// binaries. -1 means these executable bytes are unknown and must not be used.
 static int keyModeKind(uintptr_t image) {
     uint32_t instruction=0;
-    if(!image || !readMemory(image+0x3a6565c,&instruction,sizeof(instruction)))return -1;
+    if(!image || !readMemory(image+0x3594f60,&instruction,sizeof(instruction)))return -1;
     if(instruction==UINT32_C(0x52800002))return 0;
     if(instruction==UINT32_C(0x52800022))return 1;
-    if(memcmp(&instruction,SAPTraceRequestHead,sizeof(SAPTraceRequestHead)))return -1;
-    uint8_t stub[sizeof(SAPTraceRequestCode)];
-    return readMemory(image+SAPTraceRequestCaveOffset,stub,sizeof(stub)) &&
-        !memcmp(stub,SAPTraceRequestCode,sizeof(stub))?0:-1;
+    if(!memcmp(&instruction,SAPTraceRequestHead,sizeof(SAPTraceRequestHead))) {
+        uint8_t trace[sizeof(SAPTraceRequestCode)];
+        if(readMemory(image+SAPTraceRequestCaveOffset,trace,sizeof(trace))&&!memcmp(trace,SAPTraceRequestCode,sizeof(trace)))return 0;
+        return -1;
+    }
+    if(memcmp(&instruction,SAPKeyModeCallerHead,sizeof(SAPKeyModeCallerHead)))return -1;
+    uint8_t code[sizeof(SAPKeyModeTrampoline)];
+    if(!readMemory(image+SAPKeyModeCaveOffset,code,sizeof(code)) ||
+       memcmp(code,SAPKeyModeTrampoline,sizeof(code)))return -1;
+    return 2;
 }
 static int installedKeyModeKind(void) {
-    for(unsigned i=0;i<_dyld_image_count();i++) {
-        uintptr_t base=(uintptr_t)_dyld_get_image_header(i);
-        if(supportedImage(base))return keyModeKind(base);
+    uint32_t count=_dyld_image_count();
+    for(uint32_t i=0;i<count;i++) {
+        const char *path=_dyld_get_image_name(i);
+        if(!path || strcmp(strrchr(path,'/')?strrchr(path,'/')+1:path,"Spotify"))continue;
+        uintptr_t image=(uintptr_t)_dyld_get_image_header(i);
+        if(supportedImage(image))return keyModeKind(image);
     }
     return -1;
 }
 NSDictionary *SAPKeyRequestModeReport(void) {
-    int mode=installedKeyModeKind();
-    return @{@"selected_mode":@(mode),@"configured_mode":@(mode),
-        @"runtime_selector_installed":@NO,@"restore_zero_supported":@NO,
-        @"runtime_selection_supported":@NO,@"mode_one_selection_allowed":@NO,
-        @"configuration_source":mode>=0?@"verified_direct_instruction":@"unverified",
-        @"provider_argument_observed":@NO,@"authorization_confirmed":@NO,
-        @"compatibility_check":SAPDownloadCompatibilityReport(),
-        @"detail":mode==0?@"Mode 0 is verified in this Spotify 9.1.88 executable. Download authorization is checked separately.":
-            mode==1?@"This executable still uses mode 1. Install a prepared Eevee-Pixie IPA or the matching jailbreak package.":@"The installed request argument could not be verified."};
+    SAPInstallNativeOffline();
+    int kind=installedKeyModeKind();
+    BOOL tracedFixedZero=NO;
+    for(unsigned i=0;i<_dyld_image_count();i++){
+        const char *p=_dyld_get_image_name(i);if(!p||strcmp(strrchr(p,'/')?strrchr(p,'/')+1:p,"Spotify"))continue;
+        uintptr_t image=(uintptr_t)_dyld_get_image_header(i);uint32_t word=0;
+        if(kind==0&&supportedImage(image)&&readMemory(image+SAPTraceRequestOffset,&word,sizeof(word)))tracedFixedZero=!memcmp(&word,SAPTraceRequestHead,sizeof(SAPTraceRequestHead));
+    }
+    void *resolved=dlsym(RTLD_DEFAULT,"SAPCurrentKeyRequestMode");
+    BOOL symbolMatches=resolved==(void *)&SAPCurrentKeyRequestMode;
+    Dl_info resolvedInfo={0};if(resolved)dladdr(resolved,&resolvedInfo);
+    int configured=kind==2?configuredKeyMode():kind;
+    int last=atomic_load_explicit(&lastSelectorMode,memory_order_relaxed);
+    uint64_t readsOne=atomic_load_explicit(&selectorReads[1],memory_order_relaxed);
+    BOOL confirmedOne=SAPModeOneConfirmed(kind,symbolMatches,configured,last,readsOne);
+    BOOL restoreZero=SAPCanRestoreZero(kind,symbolMatches,configured,last,readsOne);
+    return @{@"selected_mode":@(configured),@"configured_mode":@(configured),
+             @"last_selector_returned_mode":@(atomic_load_explicit(&lastSelectorMode,memory_order_relaxed)),
+             @"selector_reads_mode_0":@(atomic_load_explicit(&selectorReads[0],memory_order_relaxed)),
+             @"selector_reads_mode_1":@(atomic_load_explicit(&selectorReads[1],memory_order_relaxed)),
+             @"provider_argument_observed":@NO,@"authorization_confirmed":@NO,
+             @"runtime_selector_installed":@(kind==2),@"selector_symbol_matches_this_image":@(symbolMatches),
+             @"configuration_source":tracedFixedZero?@"verified_static_trace_argument":kind==0||kind==1?@"verified_direct_instruction":kind==2?@"runtime_selector":@"unverified",
+             @"selector_resolved_image":resolvedInfo.dli_fname?[NSString stringWithUTF8String:resolvedInfo.dli_fname]:@"unresolved",
+             @"mode_one_selection_allowed":@NO,@"mode_one_confirmed":@(confirmedOne),
+             @"mode_one_confirmation_source":kind==1?@"verified_direct_instruction":confirmedOne?@"verified_selector_returned_one":@"not_confirmed",
+             @"restore_zero_supported":@(restoreZero),@"runtime_selection_supported":@(restoreZero),
+             @"restart_required":@NO,
+             @"compatibility_check":SAPDownloadCompatibilityReport(),
+             @"detail":restoreZero?@"The verified selector returned 1. Restoring mode 0 is available. Download authorization is separate.":
+                 (kind==0?@"Mode 0 is verified in the executable. This status does not confirm download authorization.":kind==1?@"Mode 1 is verified in the executable. This status does not confirm download authorization.":kind==2&&symbolMatches?@"Only restoring a confirmed mode 1 to mode 0 is allowed. A saved preference alone is not confirmation.":@"The installed request mode cannot be verified. Changes are disabled.")};
 }
 void SAPSetKeyRequestMode(NSInteger mode,void (^completion)(BOOL,NSString *)) {
-    if(completion)dispatch_async(dispatch_get_main_queue(),^{completion(NO,@"This build uses a fixed verified argument. It cannot change executable code from this menu.");});
+    if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{SAPSetKeyRequestMode(mode,completion);});return;}
+    if(mode!=0) {
+        SAPJournalNoteAction(@"key_mode_change_rejected",@{@"requested_mode":@(mode),@"reason":@"only_restoring_zero_is_allowed"});
+        if(completion)completion(NO,@"Only restoring a confirmed mode 1 to mode 0 is allowed.");return;
+    }
+    int kind=installedKeyModeKind();
+    BOOL matches=dlsym(RTLD_DEFAULT,"SAPCurrentKeyRequestMode")== (void *)&SAPCurrentKeyRequestMode;
+    if(!SAPCanRestoreZero(kind,matches,configuredKeyMode(),atomic_load(&lastSelectorMode),atomic_load(&selectorReads[1]))) {
+        SAPJournalNoteAction(@"key_mode_change_rejected",@{@"requested_mode":@(mode),@"installed_kind":@(kind),@"reason":@"no_confirmed_restorable_mode_one"});
+        if(completion)completion(NO,@"A verified executing mode-1 selector was not confirmed. No change was made.");return;
+    }
+    SAPJournalNoteAction(@"key_mode_change_requested",@{@"requested_mode":@(mode),@"configured_mode":@(configuredKeyMode())});
+    SAPRefreshDownloadCompatibility(^(NSDictionary *check){
+        NSString *blocked=SAPModeChangeBlockReason(check);
+        BOOL matches=dlsym(RTLD_DEFAULT,"SAPCurrentKeyRequestMode")== (void *)&SAPCurrentKeyRequestMode;
+        if(blocked || !SAPCanRestoreZero(installedKeyModeKind(),matches,configuredKeyMode(),atomic_load(&lastSelectorMode),atomic_load(&selectorReads[1]))) {
+            NSString *reason=blocked?:@"The installed selector changed during the check.";
+            SAPJournalNoteAction(@"key_mode_change_rejected",@{@"requested_mode":@(mode),@"check_id":check[@"id"]?:@"",@"reason":reason,@"configured_mode":@(configuredKeyMode())});
+            if(completion)completion(NO,reason);return;
+        }
+        int previous=atomic_exchange_explicit(&requestedKeyMode,0,memory_order_relaxed);
+        [NSUserDefaults.standardUserDefaults setInteger:0 forKey:keyModePreference];
+        SAPJournalNoteAction(@"key_mode_configuration_changed",@{@"previous_configured_mode":@(previous),@"configured_mode":@(mode),
+            @"check_id":check[@"id"]?:@"",@"provider_argument_observed":@NO,@"authorization_confirmed":@NO});
+        if(completion)completion(YES,previous==(int)mode?@"Mode was already configured.":@"Local mode configuration changed. Spotify's response is not yet known.");
+    });
 }
 static NSString *urlText(id value) {
     if([value respondsToSelector:@selector(absoluteString)])return [value absoluteString];
@@ -130,7 +204,7 @@ static BOOL nativeState(id wrapper,void **manager,uintptr_t *image,NSMutableDict
     Dl_info info={0};
     if(!dladdr((void *)table,&info)||!info.dli_fbase)return NO;
     *image=(uintptr_t)info.dli_fbase;
-    if(table-*image+UINT64_C(0x100000000)!=UINT64_C(0x10d06cd48)||!supportedImage(*image))return NO;
+    if(table-*image+UINT64_C(0x100000000)!=UINT64_C(0x10ca326c8)||!supportedImage(*image))return NO;
     // This wrapper is captured only from SPTOfflineManagerImplementation's
     // verified initializer. Require its C++ vtable and first method to resolve
     // inside the same exact Spotify image before using the unchanged field layout.
@@ -151,7 +225,9 @@ static BOOL nativeState(id wrapper,void **manager,uintptr_t *image,NSMutableDict
     out[@"restriction_guard_active"]=@(guarded);
     int modeKind=keyModeKind(*image);
     out[@"key_mode_runtime_selectable"]=@(modeKind==2);
-    out[@"configured_key_request_mode"]=@(modeKind);
+    out[@"key_mode_selector_binding_verified"]=@(modeKind==2 &&
+        dlsym(RTLD_DEFAULT,"SAPCurrentKeyRequestMode")== (void *)&SAPCurrentKeyRequestMode);
+    out[@"configured_key_request_mode"]=@(modeKind==2?configuredKeyMode():modeKind);
     out[@"offline_key_request_mode"]=out[@"configured_key_request_mode"];
     // Widened to also cover +0x2b0/+0x2b4: the live reservation counters the slot-reserving
     // function (analysis/queue_track_limit.txt @0x10533b28c) compares against these same
@@ -211,8 +287,14 @@ static BOOL methodSignature(Class cls,SEL sel,unsigned arguments,char returns,Me
     char type[16];method_getReturnType(*out,type,sizeof(type));return type[0]==returns;
 }
 void SAPInstallNativeOffline(void) {
+#if SAP_JAILBREAK
+    extern NSDictionary *SAPJailbreakSupportReport(void);
+    if(![SAPJailbreakSupportReport()[@"native_patches_ready"]boolValue])return;
+#endif
     static dispatch_once_t once;
     dispatch_once(&once,^{
+        NSInteger saved=[NSUserDefaults.standardUserDefaults integerForKey:keyModePreference];
+        atomic_store_explicit(&requestedKeyMode,saved==1?1:0,memory_order_relaxed);
         Class cls=NSClassFromString(@"SPTOfflineManagerImplementation");
         if(!cls)return;
         SEL selector=NSSelectorFromString(@"initWithScheduler:offlineManager:syncManager:metadataModel:");
@@ -319,6 +401,15 @@ void SAPInstallNativeOffline(void) {
         SAPJournalSetQuotaSampler(^{SAPSampleNativeOffline();});
     });
 }
+BOOL SAPSubmitNativeAlbumDownload(NSString *albumURI,NSArray<NSString *> *trackURIs,NSString **reason) {
+    SAPInstallNativeOffline();
+    id wrapper=nativeWrapper;NSString *failure=nil;
+    SAPJournalNoteAction(@"artist_native_album_handler_requested",@{@"album_uri":albumURI?:@"",@"track_count":@(trackURIs.count),@"automatic_replay":@NO});
+    BOOL returned=SAPInvokeNativeAlbumCommand(wrapper,albumURI,trackURIs,&failure);
+    SAPJournalNoteAction(@"artist_native_album_handler_returned",@{@"album_uri":albumURI?:@"",@"handler_returned":@(returned),
+        @"track_count":@(trackURIs.count),@"download_completion_confirmed":@NO,@"error":failure?:@""});
+    if(reason)*reason=failure;return returned;
+}
 void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOOL,NSString *)) {
     SAPInstallNativeOffline();
     SAPNativePreparation *operation=[SAPNativePreparation new];operation.completion=completion;operation.traceOperation=SAPTraceCurrentOperation();
@@ -335,11 +426,7 @@ void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOO
         if(stillRequested&&!stillRequested()) { [operation finish:NO reason:SAPL(@"Подготовка отменена.",@"Preparation cancelled.") report:nil];return; }
         void *manager=NULL;uintptr_t image=0;NSMutableDictionary *before=[NSMutableDictionary dictionary];
         // The app's invalidate method clears wrapper+8. Read it only on its queue.
-        if(!nativeState(wrapper,&manager,&image,before)) { [operation finish:NO reason:SAPL(@"Нативный менеджер завершён или сборка Spotify не совпадает с проверенной 9.1.88.",@"The native manager has shut down, or this Spotify build does not match the verified 9.1.88.") report:nil];return; }
-        SAPNativeReadiness(before,YES);
-        if(![before[@"executable_patches_ready"]boolValue]) {
-            [operation finish:NO reason:@"Required download patches are missing. Install the prepared Eevee-Pixie IPA or check the supported jailbreak package." report:@{@"before":before,@"changed":@NO,@"failure":@"native_patches_missing",@"native_queue":@YES}];return;
-        }
+        if(!nativeState(wrapper,&manager,&image,before)) { [operation finish:NO reason:SAPL(@"Нативный менеджер завершён или сборка Spotify не совпадает с проверенной 9.1.90.",@"The native manager has shut down, or this Spotify build does not match the verified 9.1.90.") report:nil];return; }
         // v16: previously only raised the quota when it was exactly (0,0) — the
         // "never synced" sentinel. A real account can sync a small nonzero limit
         // (this is what capped the user's playlist download after a handful of
@@ -355,13 +442,13 @@ void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOO
         }
         NSMutableDictionary *after=[NSMutableDictionary dictionary];
         BOOL stateValid=nativeState(wrapper,&manager,&image,after);
-        BOOL ready=SAPNativeReadiness(after,stateValid);
-        after[@"local_patches_verified"]=after[@"executable_patches_ready"];
+        NSDictionary *assessment=SAPAssessNativeSetup(after,stateValid);
+        [after addEntriesFromDictionary:assessment];
+        BOOL ready=[assessment[@"local_prepared"]boolValue];
         BOOL valuesChanged=![[before objectForKey:@"music_limit"]isEqual:[after objectForKey:@"music_limit"]] ||
             ![[before objectForKey:@"music_duration_seconds"]isEqual:[after objectForKey:@"music_duration_seconds"]];
         after[@"quota_setter_invoked"]=@(changed);after[@"quota_values_changed"]=@(valuesChanged);
-        [operation finish:ready reason:ready?@"Local settings prepared; device licenses and download authorization have not been checked.":
-            @"Local download setup is incomplete: verify the installed Spotify executable and quota patch." report:
+        [operation finish:ready reason:ready?assessment[@"reason"]:[assessment[@"reason"] stringByAppendingString:@"\nNo download request was sent."] report:
             @{@"before":before,@"after":after,@"changed":@(valuesChanged),@"setter_invoked":@(changed),@"native_queue":@YES}];
     });
 }
@@ -384,6 +471,7 @@ void SAPReadNativeOfflineQuota(void (^completion)(NSDictionary *)) {
     ((void(*)(id,SEL,id))objc_msgSend)(scheduler,post,^{
         NSMutableDictionary *result=[NSMutableDictionary dictionary];void *manager=NULL;uintptr_t image=0;
         BOOL valid=wrapper==nativeWrapper && nativeState(wrapper,&manager,&image,result);
+        [result addEntriesFromDictionary:SAPAssessNativeSetup(result,valid)];
         result[@"read_status"]=valid?@"received":@"invalid";
         result[@"observed_at"]=@(NSDate.date.timeIntervalSince1970);result[@"read_only"]=@YES;
         if(!valid)result[@"error"]=@"Native manager identity or state could not be verified";
@@ -413,10 +501,8 @@ void SAPSampleNativeOffline(void) {
     ((void(*)(id,SEL,id))objc_msgSend)(scheduler,post,^{
         void *manager=NULL;uintptr_t image=0;NSMutableDictionary *value=[NSMutableDictionary dictionary];
         BOOL valid=nativeState(wrapper,&manager,&image,value);value[@"valid"]=@(valid);
-        BOOL ready=SAPNativeReadiness(value,valid);
-        value[@"local_patches_verified"]=value[@"executable_patches_ready"];
-        value[@"local_prepared"]=@(ready);value[@"authorization_checked"]=@NO;
-        value[@"reason"]=@"read-only local setup sample; track-key authorization unverified";
+        [value addEntriesFromDictionary:SAPAssessNativeSetup(value,valid)];
+        value[@"sample_source"]=@"read_only_native_manager";
         SAPJournalNoteQuota(value);
     });
 }

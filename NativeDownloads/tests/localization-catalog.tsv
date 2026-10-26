@@ -12,7 +12,7 @@
 Будет очищена история диагностики загрузок.	This will clear the download diagnostic history.
 Отмена	Cancel
 Сбросить	Reset
-Загрузки треков	Track downloads
+Менеджер загрузок Pixie	Pixie Download Manager
 Загрузка	Download
 Журнал загрузок	Download log
 Диагностика	Diagnostics
@@ -26,8 +26,6 @@
 Управление загрузками	Manage downloads
 Текущий трек и журнал загрузок	Current track and download log
 Запись не началась: нет активного поддерживаемого PCM-потока или не удалось создать файл. Запусти воспроизведение на этом iPhone, затем повтори.	Recording could not start: no active supported PCM stream, or the file could not be created. Start playback on this iPhone and try again.
-Запись WAV началась. Для завершения открой «Загрузки треков» → «Остановить запись и экспортировать».	WAV recording started. To finish, open Track downloads → Stop recording and export.
-Файл сохранён. PCM: %llu байт. Пропущено: %llu кадров. Изменение формата: %@. Ошибка записи: %@. Файл доступен через «Экспорт последнего WAV».	File saved. PCM: %llu bytes. Dropped: %llu frames. Format changed: %@. Write error: %@. Use Export last WAV to access the file.
 да	yes
 нет	no
 Диагностика выключена. Включи переключатель «Диагностика» для сбора данных.	Diagnostics are off. Enable Diagnostics to collect data.
@@ -39,7 +37,6 @@ v24 · %@ · Хуков AV: %u\nAU вызовов: %u · Запусков: %u\n�
 PCM получен	PCM confirmed
 PCM пока не подтверждён	PCM not confirmed yet
 не зарегистрирован	not registered
-\n● Идёт запись WAV	\n● Recording WAV
 Журнал пока пуст.	The log is empty.
 Сначала запусти воспроизведение на этом iPhone.	Start playback on this iPhone first.
 Не удалось сохранить отчёт.	Could not save the report.

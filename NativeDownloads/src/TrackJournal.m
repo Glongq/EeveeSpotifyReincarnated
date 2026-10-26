@@ -161,7 +161,7 @@ void SAPJournalNoteAction(NSString *name,NSDictionary *facts) {
        ![facts isKindOfClass:NSDictionary.class])return;
     NSString *eventName=[name copy];NSDictionary *values=[facts copy];
     // Preserve the observation time before this event reaches the journal queue.
-    SAP_TRACE("sprite_action",name.UTF8String,SAPTraceCurrentOperation(),values);
+    SAP_TRACE("pixie_action",name.UTF8String,SAPTraceCurrentOperation(),values);
     uint64_t epoch=SAPTraceGeneration();
     onJournal(^{
         if(!SAPDiagnosticsEnabled()||epoch!=SAPTraceGeneration())return;
@@ -171,12 +171,12 @@ void SAPJournalNoteAction(NSString *name,NSDictionary *facts) {
         os_unfair_lock_lock(&lock);[actionEvents addObject:entry];trimEvents(actionEvents,200);os_unfair_lock_unlock(&lock);
         if(actionStream && actionBytes>maximumActionBytes) {
             fclose(actionStream);actionStream=NULL;actionBytes=0;
-            NSURL *current=documentsURL(@"SpriteActions.log"),*previous=documentsURL(@"SpriteActions.1.log");
+            NSURL *current=documentsURL(@"PixieActions.log"),*previous=documentsURL(@"PixieActions.1.log");
             [NSFileManager.defaultManager removeItemAtURL:previous error:NULL];
             [NSFileManager.defaultManager moveItemAtURL:current toURL:previous error:NULL];
         }
         if(!actionStream) {
-            actionStream=fopen(documentsURL(@"SpriteActions.log").fileSystemRepresentation,"a");
+            actionStream=fopen(documentsURL(@"PixieActions.log").fileSystemRepresentation,"a");
             if(!actionStream)return;
             actionBytes=(unsigned long long)ftello(actionStream);
         }
@@ -1110,8 +1110,8 @@ BOOL SAPJournalResetLogFiles(NSError **error) {
         if(logStream){fclose(logStream);logStream=NULL;}logBytes=0;
         if(actionStream){fclose(actionStream);actionStream=NULL;}actionBytes=0;
         os_unfair_lock_lock(&lock);[actionEvents removeAllObjects];os_unfair_lock_unlock(&lock);
-        for(NSString *name in @[@"SpotifyAudioProbeJournal.log",@"SpotifyAudioProbeJournal.1.log",@"SpriteActions.log",@"SpriteActions.1.log",
-            @"SpriteSupportLog.json",@"SpotifyAudioProbe.json",@"SpotifyAudioProbeTracks.json",@"SpotifyAudioProbeTracks.txt"]) {
+        for(NSString *name in @[@"SpotifyAudioProbeJournal.log",@"SpotifyAudioProbeJournal.1.log",@"PixieActions.log",@"PixieActions.1.log",
+            @"PixieSupportLog.json",@"SpotifyAudioProbe.json",@"SpotifyAudioProbeTracks.json",@"SpotifyAudioProbeTracks.txt"]) {
             NSURL *url=documentsURL(name);NSError *e=nil;
             if([NSFileManager.defaultManager fileExistsAtPath:url.path]&&![NSFileManager.defaultManager removeItemAtURL:url error:&e]&&!failure)failure=e;
         }
@@ -1211,12 +1211,13 @@ NSDictionary *SAPJournalReport(void) {
         @"player_trace_sink_dropped":@(atomic_load(&playerTraceSinkDropped)),
         @"diagnostics_enabled":@(SAPDiagnosticsEnabled()),
         @"journal_version": @6,@"focused_uri":focusedURI?:@"",@"transport_events":[transportEvents copy],
-        @"action_events":[actionEvents copy],@"action_log_file":@"SpriteActions.log",
+        @"action_events":[actionEvents copy],@"action_log_file":@"PixieActions.log",
         @"generated_at": stamp(moment) ?: @0,
         @"journal_age_seconds": @(round(moment - journalStarted)),
         @"caller_available": @(atomic_load(&callerAvailable)), @"subscribed": @(subscribed),
         @"tracked_tracks": @(tracks.count), @"reported_tracks": @(list.count),
         @"requested_tracks": @(requested), @"add_errors": @(withAddError),
+        @"requested_tracks_scope":@"Unique tracks with an observed entity request or AddDownload in this journal; native synchronization can also occur without these observations",
         @"pending_tracks": @(pending), @"state_counts": counts,
         @"session": session ? [session copy] : @{}, @"session_history": [sessionHistory copy],
         @"entities": [[NSDictionary alloc] initWithDictionary:entities copyItems:YES], @"entity_events": [entityEvents copy],
@@ -1316,7 +1317,7 @@ NSString *SAPJournalSummaryForReport(NSDictionary *report) {
 }
 static NSString *tableText(NSDictionary *report) {
     NSMutableString *text = [NSMutableString string];
-    [text appendFormat:SAPL(@"SpotifyAudioProbe — состояние офлайн-загрузки, %@\n",@"Pixie Download Manager — offline download status, %@\n"), [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
+    [text appendFormat:SAPL(@"SpotifyAudioProbe — состояние офлайн-загрузки, %@\n",@"SpotifyAudioProbe — offline download status, %@\n"), [NSDate dateWithTimeIntervalSince1970:[report[@"generated_at"] doubleValue]]];
     [text appendString:SAPJournalSummaryForReport(report)];
     [text appendString:@"\n"];
     [text appendFormat:@"%-24s %-22s %5s %8s %6s %s\n", [SAPL(@"ТРЕК",@"TRACK") UTF8String], [SAPL(@"СОСТОЯНИЕ",@"STATE") UTF8String], "%", [SAPL(@"В СОСТ.",@"IN STATE") UTF8String], "UI", [SAPL(@"ПЕРЕХОДЫ",@"TRANSITIONS") UTF8String]];

@@ -1,3 +1,6 @@
 #import "Localization.h"
 
-// English text is selected by Localization.h at compile time.
+NSString *SAPL(NSString *russian,NSString *english) {
+    (void)russian;
+    return english;
+}

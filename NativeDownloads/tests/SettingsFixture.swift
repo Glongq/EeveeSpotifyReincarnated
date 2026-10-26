@@ -110,29 +110,35 @@ class ChromeHost:UIViewController {
     DispatchQueue.main.asyncAfter(deadline:.now()+0.8){
      self.capture("downloads-top")
      guard let page=nav.topViewController as? UITableViewController else{return}
-     precondition(page.tableView.numberOfSections==5)
-     precondition(page.tableView.numberOfRows(inSection:1)==4,"quota/license/device rows missing")
+     precondition(page.tableView.numberOfSections==4)
+     precondition(page.tableView.numberOfRows(inSection:1)==3,"quota/license/device rows missing")
      let modeCell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:0,section:1))
      precondition((modeCell.contentConfiguration as? UIListContentConfiguration)?.text=="Configured request mode","selected mode must not be presented as verified execution")
      precondition(!modeCell.isUserInteractionEnabled,"mode 0 must be read-only")
+     let originalSnapshot=page.value(forKey:"snapshot") as! [String:Any]
+     var modeOneSnapshot=originalSnapshot
+     modeOneSnapshot["key_request_mode"]=["configured_mode":1,"restore_zero_supported":false,"mode_one_confirmed":true,"configuration_source":"verified_direct_instruction"]
+     page.setValue(modeOneSnapshot,forKey:"snapshot")
+     let modeOneCell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:0,section:1))
+     precondition((modeOneCell.accessoryView as? UILabel)?.text=="1")
+     precondition((modeOneCell.accessoryView as? UILabel)?.textColor==UIColor.systemRed,"mode 1 must remain red")
+     precondition(!modeOneCell.isUserInteractionEnabled,"mode 1 must not enable mode selection")
+     page.setValue(originalSnapshot,forKey:"snapshot")
      let reuseTable=ReusingSettingsTable(frame:.zero,style:.insetGrouped)
      let disabled=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:0,section:1))
      precondition(!disabled.isUserInteractionEnabled)
      reuseTable.recycled=disabled
-     for _ in 0..<3 {for section in 0..<page.tableView.numberOfSections {for row in 0..<page.tableView.numberOfRows(inSection:section) {
-      if section==1 && row==0 {continue}
-      _=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:0,section:1))
-      precondition(!disabled.isUserInteractionEnabled,"mode row must remain read-only")
+     for _ in 0..<3 {for (section,row) in [(0,0),(0,1),(1,2),(1,1),(2,0),(2,1),(2,2),(3,0),(3,1)] {
       let action=page.tableView.dataSource!.tableView(reuseTable,cellForRowAt:IndexPath(row:row,section:section))
       precondition(action === disabled && action.isUserInteractionEnabled && action.selectionStyle == .default,"recycled read-only mode cell disabled an action")
-     }}}
+     }}
      self.write("PASS: every action remains tappable after repeated reuse of the disabled mode row")
      let modeFooter=page.tableView.dataSource!.tableView?(page.tableView,titleForFooterInSection:1) ?? ""
-     precondition(modeFooter.contains("Device registrations control offline access on copies of Spotify."))
+     precondition(modeFooter.contains("5 licenses = up to 5 devices with offline music."))
      precondition(!modeFooter.lowercased().contains("recovery"))
      let refreshCell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:1,section:1))
      precondition((refreshCell.contentConfiguration as? UIListContentConfiguration)?.text=="Refresh quotas and licenses")
-     for (row,title) in [(2,"Manage offline device slots"),(3,"Enable offline listening on this copy")] {
+     for (row,title) in [(2,"Offline devices")] {
       let cell=page.tableView.dataSource!.tableView(page.tableView,cellForRowAt:IndexPath(row:row,section:1))
       precondition((cell.contentConfiguration as? UIListContentConfiguration)?.text==title)
      }
@@ -145,10 +151,9 @@ class ChromeHost:UIViewController {
        precondition(!(content.text ?? "").contains("Export") && !(content.text ?? "").contains("Send log"),"duplicate log export row")
       }
      }}
-     self.exerciseSlots(page:page,nav:nav) {
-     page.tableView.scrollToRow(at:IndexPath(row:0,section:3),at:.middle,animated:false)
+     page.tableView.scrollToRow(at:IndexPath(row:0,section:2),at:.middle,animated:false)
      DispatchQueue.main.asyncAfter(deadline:.now()+0.5){
-      let togglePath=IndexPath(row:0,section:3)
+      let togglePath=IndexPath(row:0,section:2)
       if let toggle=page.tableView.cellForRow(at:togglePath)?.accessoryView as? UISwitch {
        precondition(!toggle.isOn,"diagnostics must default off")
        toggle.isOn=true;toggle.sendActions(for:.valueChanged)
@@ -161,54 +166,119 @@ class ChromeHost:UIViewController {
       page.tableView.setContentOffset(CGPoint(x:0,y:max(0,page.tableView.contentSize.height-page.tableView.bounds.height+page.tableView.adjustedContentInset.bottom)),animated:false)
       page.tableView.layoutIfNeeded()
       self.capture("downloads-bottom")
-      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:1,section:4)),to:window)
+      let last=page.tableView.convert(page.tableView.rectForRow(at:IndexPath(row:1,section:3)),to:window)
       self.write("downloads last row bottom=\(last.maxY); mini top=\(miniTop); inset=\(page.tableView.contentInset)")
       precondition(last.maxY<=miniTop-10,"downloads row under mini-player")
-      page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:1,section:3))
-      DispatchQueue.main.asyncAfter(deadline:.now()+0.7){self.capture("diagnostics");self.write("PASS: entry spacing, mini-player clearance, navigation and native pages rendered")}
-     }
+      page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:1,section:2))
+      DispatchQueue.main.asyncAfter(deadline:.now()+0.7){
+       self.capture("diagnostics")
+       guard let details=nav.topViewController as? UITableViewController else {preconditionFailure("missing diagnostics page")}
+       precondition(details.title=="Audio diagnostics" && details.tableView.numberOfRows(inSection:1)==8)
+       let labels=["Downloaded","Downloading","Waiting","Paused","Errors","Limit reached","Not downloaded","Expired"]
+       for row in 0..<8 {
+        let cell=details.tableView.dataSource!.tableView(details.tableView,cellForRowAt:IndexPath(row:row,section:1))
+        precondition(cell.textLabel?.text==labels[row] && cell.detailTextLabel?.text != "Unavailable")
+       }
+       details.tableView.scrollToRow(at:IndexPath(row:0,section:1),at:.top,animated:false)
+       details.tableView.layoutIfNeeded();self.capture("diagnostics-status")
+       func inspectManager(_ remaining:Int) {
+        nav.popToViewController(page,animated:false)
+        page.tableView.delegate?.tableView?(page.tableView,didSelectRowAt:IndexPath(row:2,section:1))
+        DispatchQueue.main.asyncAfter(deadline:.now()+0.5) {
+         guard let devices=nav.topViewController as? UITableViewController else {preconditionFailure("missing device page")}
+         devices.loadViewIfNeeded()
+         precondition(devices.title=="Offline devices" && devices.tableView.numberOfRows(inSection:0)==2,"device route did not finish")
+         precondition(devices.tableView.style == .insetGrouped && devices.tableView.numberOfSections==3)
+         for (section,title) in ["Devices","iPhone (current)","Source checks"].enumerated() {
+          precondition(devices.tableView.dataSource?.tableView?(devices.tableView,titleForHeaderInSection:section)==title,"offline section order changed")
+         }
+         precondition(devices.tableView.numberOfRows(inSection:1)==1 && devices.tableView.numberOfRows(inSection:2)==3)
+         let old=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:0))
+         let other=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:1,section:0))
+         let originalPlan=devices.value(forKey:"plan") as! [String:Any]
+         let fullRecords=originalPlan["devices"] as! [[String:Any]]
+         precondition(fullRecords.count==4 && fullRecords.first?["selection_token"] as? String == "historical-token","presentation filter changed the original plan")
+         let enabledRecords=devices.value(forKey:"devices") as! [[String:Any]]
+         precondition(enabledRecords.compactMap{$0["selection_token"] as? String} == ["old-token","other-token"],"filtered rows lost original order or selection tokens")
+         precondition(enabledRecords.allSatisfy{($0["offline_enabled"] as? Bool)==true},"inactive record leaked into device list")
+         let inactiveCurrent=devices.value(forKey:"currentDevice") as! [String:Any]
+         precondition(inactiveCurrent["device_id"] as? String == "this-device" && inactiveCurrent["offline_enabled"] as? Bool == false,"filter changed current-device identity or status")
+         let enable=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:1))
+         precondition(enable.isUserInteractionEnabled && (enable.contentConfiguration as? UIListContentConfiguration)?.text == "Enable offline on this device","hidden inactive current record lost its separate enable action")
+         for cell in [old,other] {
+          guard let content=cell.contentConfiguration as? UIListContentConfiguration else {preconditionFailure("missing native device content")}
+          precondition(content.image==nil && content.imageProperties.reservedLayoutSize.width==0,"device has an icon tile")
+          precondition(content.text=="iPhone" && content.secondaryText?.contains("Device ")==true,"duplicate device names lost identifying details")
+          precondition(cell.backgroundColor==UIColor.secondarySystemGroupedBackground && cell.accessoryType == .none)
+         }
+         precondition(old.accessoryView==nil && other.accessoryView==nil,"a different active iPhone was marked as this device")
+         for row in 0..<2 {
+          let trailing=devices.tableView.delegate?.tableView?(devices.tableView,trailingSwipeActionsConfigurationForRowAt:IndexPath(row:row,section:0))
+          precondition(trailing?.actions.first?.title=="Remove" && trailing?.actions.first?.style == .destructive && trailing?.performsFirstActionWithFullSwipe==false)
+          precondition(devices.tableView.delegate?.tableView?(devices.tableView,leadingSwipeActionsConfigurationForRowAt:IndexPath(row:row,section:0)) == nil,"enabled row offered an enable swipe")
+         }
+         precondition(devices.tableView.delegate?.tableView?(devices.tableView,trailingSwipeActionsConfigurationForRowAt:IndexPath(row:2,section:0)) == nil,"hidden historical row offered Remove")
+         var emptyPlan=originalPlan
+         emptyPlan["devices"]=fullRecords.map { record -> [String:Any] in var disabled=record;disabled["offline_enabled"]=false;return disabled }
+         devices.setValue(emptyPlan,forKey:"plan");devices.tableView.reloadData()
+         precondition((devices.value(forKey:"devices") as! [[String:Any]]).isEmpty && devices.tableView.numberOfRows(inSection:0)==1,"empty active list did not show one placeholder")
+         let placeholder=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:0))
+         precondition(placeholder.textLabel?.text=="No offline-enabled devices")
+         precondition(devices.tableView.delegate?.tableView?(devices.tableView,trailingSwipeActionsConfigurationForRowAt:IndexPath(row:0,section:0)) == nil,"placeholder offered Remove")
+         precondition(devices.tableView.delegate?.tableView?(devices.tableView,leadingSwipeActionsConfigurationForRowAt:IndexPath(row:0,section:0)) == nil,"placeholder offered an enable swipe")
+         var currentEnabledPlan=originalPlan
+         currentEnabledPlan["devices"]=fullRecords.map { record -> [String:Any] in
+          var updated=record;if (record["is_current_device"] as? Bool)==true {updated["offline_enabled"]=true};return updated
+         }
+         devices.setValue(currentEnabledPlan,forKey:"plan");devices.tableView.reloadData()
+         let withCurrent=devices.value(forKey:"devices") as! [[String:Any]]
+         precondition(withCurrent.compactMap{$0["selection_token"] as? String} == ["old-token","current-token","other-token"])
+         for row in 0..<3 {
+          let cell=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:row,section:0))
+          if row==1 {
+           precondition((cell.contentConfiguration as? UIListContentConfiguration)?.text=="iPhone (current)" && cell.accessibilityLabel=="iPhone (current)","exact current-device name marker lost")
+          } else {precondition((cell.contentConfiguration as? UIListContentConfiguration)?.text=="iPhone","current marker matched an iPhone name instead of its exact identity")}
+          precondition(cell.accessoryView==nil,"current marker should be part of the name")
+         }
+         var unknownCurrentPlan=originalPlan
+         unknownCurrentPlan["devices"]=fullRecords.map { record -> [String:Any] in var unknown=record;unknown["is_current_device"]=false;return unknown }
+         devices.setValue(unknownCurrentPlan,forKey:"plan");devices.tableView.reloadData()
+         precondition(devices.tableView.dataSource?.tableView?(devices.tableView,titleForHeaderInSection:1)=="Current device","unknown identity received a current marker")
+         let unknownEnable=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:1))
+         precondition(!unknownEnable.isUserInteractionEnabled,"unknown current identity offered enable")
+         devices.setValue(originalPlan,forKey:"plan");devices.tableView.reloadData()
+         precondition((devices.value(forKey:"devices") as! [[String:Any]]).compactMap{$0["selection_token"] as? String} == ["old-token","other-token"],"restoring the plan left stale visible records")
+         if remaining>1 {inspectManager(remaining-1);return}
+         devices.view.layoutIfNeeded();self.capture("offline-devices")
+         devices.tableView.setContentOffset(CGPoint(x:0,y:max(0,devices.tableView.contentSize.height-devices.tableView.bounds.height+devices.tableView.adjustedContentInset.bottom)),animated:false)
+         devices.tableView.layoutIfNeeded()
+         let enableRect=devices.tableView.convert(devices.tableView.rectForRow(at:IndexPath(row:0,section:1)),to:window)
+         precondition(enableRect.maxY<=miniTop-10,"device enable row under mini-player")
+         self.capture("offline-devices-bottom")
+         func exerciseEnable(_ times:Int) {
+          devices.tableView.delegate?.tableView?(devices.tableView,didSelectRowAt:IndexPath(row:0,section:1))
+          DispatchQueue.main.asyncAfter(deadline:.now()+0.4) {
+           let disabled=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:1))
+           precondition(!disabled.isUserInteractionEnabled,"mismatched source enabled mutation")
+           precondition(devices.tableView.delegate?.tableView?(devices.tableView,trailingSwipeActionsConfigurationForRowAt:IndexPath(row:0,section:0)) == nil,"mismatch offered swipe")
+           devices.presentedViewController?.dismiss(animated:false)
+           if let refresh=devices.navigationItem.rightBarButtonItem,let action=refresh.action,let target=refresh.target as? NSObject {target.perform(action)}
+           let enabled=devices.tableView.dataSource!.tableView(devices.tableView,cellForRowAt:IndexPath(row:0,section:1))
+           precondition(enabled.isUserInteractionEnabled,"failed completion left device manager busy")
+           if times>1 {DispatchQueue.main.asyncAfter(deadline:.now()+0.2){exerciseEnable(times-1)};return}
+           self.write("PASS: repeated enable error completion clears busy state; source mismatch blocks mutations until refresh")
+           self.write("PASS: status counts inside Audio diagnostics; repeated offline manager navigation; active-only device rows preserve order and tokens; full plan and inactive current identity retained; empty active placeholder has no Remove; exact current name marker for enabled/disabled identity; no marker or enable for unknown identity; guarded Remove without full swipe; no enable swipes")
+           self.write("PASS: entry spacing, mini-player clearance, navigation and native pages rendered")
+          }
+         }
+         exerciseEnable(3)
+        }
+       }
+       inspectManager(3)
+      }
      }
     }
    }
-  }
- }
- @MainActor func exerciseSlots(page:UITableViewController,nav:UINavigationController,completion:@escaping ()->Void) {
-  Task { @MainActor in
-   func settle() async {try? await Task.sleep(nanoseconds:450_000_000)}
-   @MainActor func select(_ controller:UITableViewController,_ section:Int,_ row:Int) {
-    controller.tableView.delegate?.tableView?(controller.tableView,didSelectRowAt:IndexPath(row:row,section:section))
-   }
-   @MainActor func currentAlert()->UIAlertController {
-    let candidates:[UIViewController?]=[page,nav,self.window?.rootViewController]
-    guard let alert=candidates.compactMap({$0?.presentedViewController as? UIAlertController}).first else {preconditionFailure("expected original slot dialog")}
-    return alert
-   }
-   @MainActor func assertMenuHittable() {
-    precondition(nav.topViewController===page,"original menu unexpectedly replaced")
-    precondition(page.presentedViewController==nil && nav.presentedViewController==nil && self.window?.rootViewController?.presentedViewController==nil)
-    page.tableView.scrollToRow(at:IndexPath(row:1,section:1),at:.middle,animated:false)
-    page.tableView.layoutIfNeeded()
-    for index in page.tableView.indexPathsForVisibleRows ?? [] where index != IndexPath(row:0,section:1) {
-     guard let cell=page.tableView.cellForRow(at:index),let window=self.window else {preconditionFailure("missing visible action")}
-     let center=cell.convert(CGPoint(x:cell.bounds.midX,y:cell.bounds.midY),to:window)
-     if center.y<page.view.safeAreaInsets.top+8 || center.y>window.bounds.height-154 {continue}
-     let hit=window.hitTest(center,with:nil)
-     precondition(hit != nil && (hit===cell || hit!.isDescendant(of:cell)),"action intercepted after slots: \(index), hit=\(String(describing:hit))")
-    }
-   }
-   for success in [false,true,false] {
-    select(page,1,2);await settle();precondition(nav.topViewController===page)
-    SAPFixtureCompleteSlotPreview(success);await settle();let alert=currentAlert()
-    precondition(alert.preferredStyle==(success ? .actionSheet:.alert),"original slot dialog style changed")
-    self.capture(success ? "slots-original-list":"slots-original-error")
-    await withCheckedContinuation { (done:CheckedContinuation<Void,Never>) in alert.dismiss(animated:true,completion:{done.resume()}) }
-    await settle();assertMenuHittable()
-    select(page,2,0);await settle();precondition(nav.topViewController !== page,"status button stopped responding")
-    nav.popViewController(animated:false);await settle();assertMenuHittable()
-   }
-   precondition(SAPFixtureSlotReleaseCalls()==0,"reading or dismissing slots sent a mutation")
-   self.write("PASS: original slot dialogs success/error/dismissal repeated; every visible menu action is hittable and status navigation works")
-   completion()
   }
  }
  func descendants(_ view:UIView)->[UIView]{[view]+view.subviews.flatMap{descendants($0)}}

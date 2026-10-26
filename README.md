@@ -4,7 +4,7 @@
 > **This is Glongq's independently maintained fork**, not an official EeveeSpotify or Spotify release.
 > Original project: **[SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)**.
 
-**Current version: Pixie Download Manager v1** · Spotify **9.1.88** · EeveeSpotify **7.0.0**
+**Current version: Pixie Manager v1.3** · Spotify **9.1.90** · EeveeSpotify **7.0.0**
 
 **Fork maintainer:** [Glongq](https://github.com/Glongq)
 
@@ -12,64 +12,51 @@
 
 **License:** [GPLv3](LICENSE). Upstream history and contributor attribution are retained.
 
-## Pixie v1
+## What's New
 
-English-only download settings integrated into **EeveeSpotify → Pixie Download Manager**.
+- Updated Spotify to v9.1.90 and Pixie Manager to v1.3
+- Download releases directly from artist profiles, download separately or into a new or existing playlist
 
-- Native album/playlist downloads through Spotify's own Download button.
-- Download the current track or its album from the manager.
-- Download status, compatibility checks and explicit offline-device slot management.
-- Optional diagnostics and one support-log export. Diagnostics are off by default.
-- Fixed menu-cell reuse so checking offline slots does not disable unrelated buttons.
-- Spotify's native queue, encrypted offline storage and playback remain in use. No MP3/WAV export.
+## Pixie
 
-Pixie v1 is the latest fixed v1 build renamed from Sprite. The rename changes visible names only. Internal class names, log filenames and the DEB package identifier/version are retained for compatibility. The new single-track action in Spotify's `…` menus was cancelled and is **not** part of this release.
+English-only settings in **EeveeSpotify → Pixie Download Manager**.
+
+- Native downloads for tracks, albums and playlists, including the current track's album.
+- Artist release selection with artwork, category selection, queue/progress and Stop, Continue and Cancel controls.
+- Offline-device management with confirmed registration changes and source readback.
+- Optional diagnostics, one support-log export and manual log reset. Diagnostics are off by default.
+- Spotify's own offline storage and playback remain in use. No MP3/WAV export; WAV capture code has been removed.
 
 ## Downloads
 
-**[Pixie v1 release — Rootless / RootHide DEBs and dylibs](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/pixie-v1)**
+**[IPA announcements — @glongqforks](https://t.me/glongqforks)**. This source update uploads no IPA or DEB files.
 
-- Install the DEB matching your jailbreak. RootHide and Rootless are separate packages.
-- Dylibs are the matching unified Eevee + Pixie libraries extracted from those packages, not standalone Spotify apps. Their internal install name remains `EeveeSpotify.dylib`; do not inject them alongside another Eevee/native backend.
-- For a sideloaded app, injecting the dylib alone is insufficient: the guarded Spotify executable must be prepared **before installation signing**, as described below.
-- This GitHub release does not contain a Spotify IPA. **[IPA announcements — @glongqforks](https://t.me/glongqforks)**.
-- GitHub's automatic **Source code (zip/tar.gz)** downloads contain source code, not an installable app.
+**[Previous Pixie v1 jailbreak packages](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/pixie-v1)** target Spotify 9.1.88. They have not been rebuilt from the current v1.3 sources. To reproduce those packages, check out tag `pixie-v1` and use its build guide.
 
-### Verification scope
+GitHub's automatic source archives contain source code, not an installable app.
 
-The maintainer confirmed the fixed v1 menu works in LiveContainer and reported full jailbreak testing of the pre-rename fixed v1 packages. The Pixie rename preserves their behavior; the renamed IPA/DEBs passed local source, UI, signature and package checks. The jailbreak and iOS versions for the reported jailbreak test were not supplied, so this does not establish compatibility with every jailbreak.
+## Verification and compatibility
 
-Earlier baseline downloads/offline playback were verified by the maintainer through SideStore and LiveContainer on iPhone 15 Pro Max / iOS 27.0.1. Those remain historical results, not a test of every later build. See the [technical verification report](docs/native-downloads.md).
+Targets Spotify **9.1.90**, ARM64 UUID `fbce22c17e1b3e0d9be866ff9291943e`, with EeveeSpotify **7.0.0**. Builders validate the UUID and instruction bytes; a matching version label alone is insufficient. Liquid Glass requires iOS 26.
 
-Native downloads require the exact supported Spotify **9.1.88** ARM64 image, UUID `f51dbd933b8f3a12943196c606e3afc2`, with guarded instruction bytes. Matching version labels alone are insufficient. Minimum iOS is **16.1**; Liquid Glass requires **iOS 26**. Other binaries, iPads, long-term licence renewal and cellular-only downloads have not been independently validated.
+Local IPA builds, signatures, imports and component tests passed. Offline-device tests include the actual Swift Eevee authentication provider with all HTTP intercepted; they do not modify real registrations. The latest authentication fix has not been verified on an iPhone. Current v1.3 jailbreak execution is not tested.
 
-## Sources and builds
+Historical baseline downloads and offline playback were verified by the maintainer through SideStore and LiveContainer on iPhone 15 Pro Max / iOS 27.0.1. These are historical results, not verification of every later build.
 
-The sources in this release correspond to the latest fixed IPA and the Pixie v1 packages. See [v1 release notes](RELEASE_NOTES-pixie-v1.md), [source hashes](NativeDownloads/provenance-pixie-v1.json), [native build guide](NativeDownloads/README.md), [jailbreak build guide](NativeDownloads/jailbreak/README.md) and [changelog](CHANGELOG-native-downloads.md).
+## Source and build
 
-With the documented macOS/Xcode/Theos toolchain, supply your own unmodified **EeveeSpotify 7.0.0 / Spotify 9.1.88 base IPA**:
-
-```sh
-python3 NativeDownloads/tools/test_patchers.py
-THEOS_PACKAGE_SCHEME=rootless make -j2 all FINALPACKAGE=1 NATIVE_DOWNLOADS_JAILBREAK=1
-python3 NativeDownloads/tools/prepare_ipa.py /absolute/path/to/EeveeSpotify-7.0.0-9.1.88.ipa Spotify-9.1.88-Eevee-Pixie-v1.ipa --core .theos/obj/EeveeSpotify.dylib
-```
-
-Select your Theos checkout with `THEOS`. The output is ad-hoc signed for packaging and must be signed by your installation tool. Do not use a RootHide library for sideloading.
-
-The **[Pixie Download Manager — Validate / Build IPA](https://github.com/Glongq/EeveeSpotifyReincarnated/actions/workflows/native-downloads.yml)** workflow validates sources on pushes. Its optional legacy companion-overlay build requires a compatible upstream-only Eevee library and a user-supplied base IPA; unified cores use `prepare_ipa.py` instead. Actions artifacts are temporary and are not a public IPA release.
+See [BUILD-pixie-v1.3.md](BUILD-pixie-v1.3.md) for the current IPA build commands and [source provenance](NativeDownloads/provenance-pixie-v1.3.json) for source hashes. Previous build guides and provenance files describe their historical tagged versions.
 
 ## Reporting issues and announcements
 
 - **Announcements:** [@glongqforks](https://t.me/glongqforks).
-- **Issues for this fork:** [Glongq/EeveeSpotifyReincarnated](https://github.com/Glongq/EeveeSpotifyReincarnated/issues), not upstream. Include installation method, Spotify build, iOS and jailbreak if applicable; redact personal data from logs.
-- **Upstream guidance:** [common issues](https://github.com/SideloadLabs/EeveeSpotifyReincarnated/blob/Master/common_issues.md).
+- **Issues:** [Glongq/EeveeSpotifyReincarnated](https://github.com/Glongq/EeveeSpotifyReincarnated/issues). Include the installation method, Spotify build and iOS version; redact personal data from logs.
 
 ## Upstream project and credits
 
 The original EeveeSpotifyReincarnated project is maintained by [jaydenjcpy](https://github.com/jaydenjcpy), [faroukbmiled](https://github.com/faroukbmiled), and [Mod4](https://github.com/M0d-4). Upstream history and contributions also include [estrogencat](https://github.com/estrogencat), [Skye](https://github.com/Meeep1), [whoeevee](https://github.com/whoeevee), and [Spikerko](https://github.com/Spikerko).
 
-The menu and applicable fixes were ported from [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) to Eevee's exact 9.1.88 base. Spotify 9.1.90 offsets were not copied.
+Pixie Manager v1.3 was ported from [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) to EeveeSpotify 7.0.0 / Spotify 9.1.90. The native patchers validate the exact Spotify binary and guarded instruction bytes.
 
 **OpenAI Codex** produced the native-download implementation, integration, documentation and local builds under **Glongq's direction**. Glongq performed device testing and supplied feedback. This fork is independent of the upstream maintainers.
 

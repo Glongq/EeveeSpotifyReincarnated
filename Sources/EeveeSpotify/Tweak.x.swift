@@ -241,6 +241,7 @@ struct EeveeSpotify: Tweak {
         activateTelemetryBlock()
         activateTheme()
         activateLiquidGlass()
+        activatePixieArtistDownloads()
         activatePlayerGestures()
         activatePlayerHaptics()
         activateHomeDeclutter()

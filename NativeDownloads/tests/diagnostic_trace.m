@@ -46,9 +46,9 @@ int main(int argc,const char **argv){@autoreleasepool{
     SAP_TRACE("test","must_not_exist",0,@{@"value":@1});assert(SAPTraceRPCBegin(@"service",@"method",NSData.data,@"test",FakeEndpoint.new,NO)==nil);
     assert(![SAPTraceReport()[@"initialized"]boolValue]);
     if([scenario isEqual:@"off_reset"]){
-        [@"old history"writeToURL:[directory URLByAppendingPathComponent:@"SpriteTrace.jsonl"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        [@"old history"writeToURL:[directory URLByAppendingPathComponent:@"PixieTrace.jsonl"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
         NSError *error=nil;assert(SAPTraceReset(&error)&&!error&&!SAPTraceIsActive()&&![SAPTraceReport()[@"initialized"]boolValue]);
-        assert(![NSFileManager.defaultManager fileExistsAtPath:[directory URLByAppendingPathComponent:@"SpriteTrace.jsonl"].path]);
+        assert(![NSFileManager.defaultManager fileExistsAtPath:[directory URLByAppendingPathComponent:@"PixieTrace.jsonl"].path]);
         __block NSUInteger evaluations=0;SAP_TRACE("test","off",0,@{@"value":@(evaluations++)});assert(evaluations==0);
         puts("PASS reset while OFF deletes old files without enabling or creating the trace queue");return 0;
     }
@@ -85,7 +85,7 @@ int main(int argc,const char **argv){@autoreleasepool{
     SAPTraceWithOperation(op,^{SAP_TRACE("test","snapshot",op,@{@"value":mutable,@"Authorization":@"Bearer HIDDEN_TOKEN",@"key_bytes":@"HIDDEN_KEY",@"unknown_native":NSData.data});});
     [mutable setString:@"changed after capture"];
     FakeEndpoint *endpoint=FakeEndpoint.new;__block SAPTraceRPC *call;
-    SAPTraceWithOperation(op,^{call=SAPTraceRPCBegin(@"spotify.offline_esperanto.proto.Offline",@"AddDownload",SAPProtoBytes(2,[@"spotify:album:1234567890123456789012"dataUsingEncoding:NSUTF8StringEncoding]),@"sprite",endpoint,NO);});
+    SAPTraceWithOperation(op,^{call=SAPTraceRPCBegin(@"spotify.offline_esperanto.proto.Offline",@"AddDownload",SAPProtoBytes(2,[@"spotify:album:1234567890123456789012"dataUsingEncoding:NSUTF8StringEncoding]),@"pixie",endpoint,NO);});
     assert(call);SAPTraceRPCReply(call,NSData.data);SAPTraceRPCReturned(call,nil);
     SAPTraceRPC *silent=SAPTraceRPCBegin(@"spotify.offline_esperanto.proto.Offline",@"LicenseStatus",NSData.data,@"spotify",endpoint,NO);
     SAPTraceTestDrain();

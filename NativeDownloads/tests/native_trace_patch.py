@@ -31,10 +31,10 @@ trace.DLSYM_STUB=real_dlsym
 from patch_imports import patch as audio_patch
 from patch_native_restrictions import patch as quota_patch
 from patch_key_request_mode import patch as mode_patch
-source=ROOT/'build/sprite-v1/Spotify-original'
+source=ROOT/'build/key-flow-audit/Spotify-original'
 if source.exists():
     original_source=source.read_bytes()
-    base,_=audio_patch(original_source);base,_=quota_patch(base);base,_=mode_patch(base)
+    base,_=audio_patch(original_source);base,_=quota_patch(base);base,_=mode_patch(base,runtime_selectable=False)
     final,manifest=trace.patch(base)
     allowed=[]
     for point in trace.POINTS:
@@ -57,5 +57,5 @@ if source.exists():
     assert (ROOT/'src/NativeTracePatch.h').read_text()==trace.header()
     import json
     (out/'verified-native-boundaries.json').write_text(json.dumps({'sha256':hashlib.sha256(final).hexdigest(),'allowed_ranges':allowed,'manifest':manifest,'native_abi_fixture_passed':True},indent=2)+'\n')
-    print('PASS exact supplied 9.1.88 guards, dlsym binding, three code boundaries and padding only; repeat/mismatched/occupied patches rejected')
+    print('PASS exact supplied 9.1.90 guards, dlsym binding, three code boundaries and padding only; repeat/mismatched/occupied patches rejected')
 else:print('SKIP real-binary native trace checks: source fixture absent')

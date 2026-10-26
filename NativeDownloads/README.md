@@ -1,3 +1,11 @@
+# Current source release: Pixie Manager v1.3 / Spotify 9.1.90
+
+Use [the current build guide](../BUILD-pixie-v1.3.md) and `tools/build_eevee_9190.py` for EeveeSpotify 7.0.0 / Spotify 9.1.90. Current source hashes are in `provenance-pixie-v1.3.json`.
+
+The older build commands, tests and provenance described below target historical 9.1.88 releases. Check out tag `pixie-v1` to reproduce those binaries; the previous jailbreak packages have not been updated in this source publication.
+
+---
+
 # Pixie Download Manager — Eevee-Pixie v1
 
 English-only manager for the exact Spotify 9.1.88 ARM64 image, integrated into

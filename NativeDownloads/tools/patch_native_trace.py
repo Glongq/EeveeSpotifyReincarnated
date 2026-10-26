@@ -1,4 +1,4 @@
-"""Observe guarded 9.1.88 key boundaries without reading key contents.
+"""Observe guarded 9.1.90 key boundaries without reading key contents.
 
 The request trampoline preserves the fixed mode-0 argument and returns to the
 original indirect call. Completion trampolines replay all displaced prologues.
@@ -15,9 +15,9 @@ from patch_key_request_mode import DLSYM_STUB,_verify_dlsym_binding
 
 SYMBOL=b'SAPTraceNativeBoundary\0'
 POINTS=[
-    ('Request',0x103a6565c,0x100023700,bytes.fromhex('02008052'),0),
-    ('Success',0x106adce10,0x100023900,bytes.fromhex('ff4301d1f44f03a9fd7b04a9fd030191'),1),
-    ('Failure',0x10092f08c,0x100023b00,bytes.fromhex('ff4301d1f44f03a9fd7b04a9fd030191'),2),
+    ('Request',0x103594f60,0x100023700,bytes.fromhex('02008052'),0),
+    ('Success',0x106231e70,0x100023900,bytes.fromhex('ff4301d1f44f03a9fd7b04a9fd030191'),1),
+    ('Failure',0x100893730,0x100023b00,bytes.fromhex('ff4301d1f44f03a9fd7b04a9fd030191'),2),
 ]
 
 @cache
@@ -64,7 +64,7 @@ Ldone:
 Lname:
  .asciz "SAPTraceNativeBoundary"
 '''
-    with tempfile.TemporaryDirectory(prefix='sprite-native-trace-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='pixie-native-trace-') as tmp:
         source=Path(tmp)/'boundary.S';obj=Path(tmp)/'boundary.o';source.write_text(asm)
         sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
         subprocess.run(['xcrun','clang','-c','-arch','arm64','-target','arm64-apple-ios15.0','-isysroot',sdk,str(source),'-o',str(obj)],check=True)
@@ -122,39 +122,12 @@ def patch(data):
     return bytes(out),{'uuid':UUID.hex(),'fixed_request_mode':0,'helper':SYMBOL[:-1].decode(),'boundaries':reports,'key_material_read':False}
 
 def header():
-    lines=['// Generated guarded native observation boundaries for Spotify 9.1.88.','#pragma once','#include <stdint.h>']
+    lines=['// Generated guarded native observation boundaries for Spotify 9.1.90.','#pragma once','#include <stdint.h>']
     for point in POINTS:
         name,address,cave,expected,kind=point;stub=trampoline(point)
         values=lambda b:','.join(f'0x{x:02x}' for x in b)
         lines += [f'static const uintptr_t SAPTrace{name}Offset=0x{address-0x100000000:x};',
                   f'static const uintptr_t SAPTrace{name}CaveOffset=0x{cave-0x100000000:x};',
-                  f'static const uint8_t SAPTrace{name}Original[]={{{values(expected)}}};',
                   f'static const uint8_t SAPTrace{name}Head[]={{{values(struct.pack("<I",branch(address,cave)))}}};',
                   f'static const uint8_t SAPTrace{name}Code[]={{{values(stub)}}};']
     return '\n'.join(lines)+'\n'
-
-
-def normalize(data):
-    """Remove exact known observer stubs for an idempotent, fully guarded rebuild."""
-    end, first, segments, uuid = layout(data)
-    if uuid != UUID: raise ValueError('Unsupported trace UUID')
-    out = bytearray(data)
-    text = next(s for s in segments if s[0] == b'__TEXT')
-    _, vm, _, fileoff, filesize, protection = text
-    for point in POINTS:
-        name, address, cave, expected, kind = point
-        at, target = fileoff + address-vm, fileoff + cave-vm
-        code = trampoline(point)
-        if not (vm <= address and address+len(expected) <= vm+filesize and target >= end and target+len(code) <= first and protection&5 == 5):
-            raise ValueError('Invalid observation layout')
-        installed = data[at:at+4] == struct.pack('<I', branch(address,cave))
-        if installed:
-            if data[at+4:at+len(expected)] != expected[4:] or data[target:target+len(code)] != code:
-                raise ValueError('Unknown or incomplete observation patch')
-            out[at:at+len(expected)] = expected
-            out[target:target+len(code)] = bytes(len(code))
-        elif any(data[target:target+len(code)]):
-            raise ValueError('Observation padding occupied')
-        elif data[at:at+len(expected)] != expected and not (kind==0 and data[at:at+4] == bytes.fromhex('22008052')):
-            raise ValueError('Observation entry code differs')
-    return bytes(out)

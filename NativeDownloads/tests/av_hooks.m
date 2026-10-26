@@ -9,6 +9,8 @@ static unsigned sinkCalls, completions;
 static CMSampleBufferRef lastOriginal;
 static AVAudioPCMBuffer *originalPlayer;
 static AVAudioTime *expectedTime;
+static BOOL reenterAndThrow, insideEnqueueException;
+static unsigned enqueueExceptionCalls;
 static void verify(const AudioBufferList *data, UInt32 frames) {
     for (UInt32 b = 0; b < data->mNumberBuffers; ++b) {
         const float *samples = data->mBuffers[b].mData;
@@ -16,6 +18,17 @@ static void verify(const AudioBufferList *data, UInt32 frames) {
     }
 }
 static void sampleSink(id self, SEL cmd, CMSampleBufferRef sample) {
+    if (reenterAndThrow) {
+        enqueueExceptionCalls++;
+        if (insideEnqueueException) {
+            reenterAndThrow = NO;
+            @throw [NSException exceptionWithName:@"NestedEnqueueOriginal" reason:nil userInfo:nil];
+        }
+        insideEnqueueException = YES;
+        @try { [self enqueueSampleBuffer:sample]; }
+        @finally { insideEnqueueException = NO; }
+        return;
+    }
     const AudioStreamBasicDescription *fmt = CMAudioFormatDescriptionGetStreamBasicDescription(CMSampleBufferGetFormatDescription(sample));
     if (fmt->mFormatID != kAudioFormatLinearPCM) { assert(sample == lastOriginal); sinkCalls++; return; }
     struct { UInt32 count; AudioBuffer buffers[32]; } data;
@@ -93,11 +106,7 @@ int main(void) { @autoreleasepool {
         SpotifyAudioProbeMuteForSeconds(0);
         expected = 0.5f; [renderer enqueueSampleBuffer:input]; // original wasn't altered
         SpotifyAudioProbeSetObserver(scale); expected = 0.25f;
-        SAPCaptureFormat capture; assert(SpotifyAudioProbeBeginCapture(&capture));
         [renderer enqueueSampleBuffer:input];
-        SpotifyAudioProbeEndCapture();
-        float output[254]; assert(SpotifyAudioProbeReadCapture(output, sizeof(output)) == sizeof(output));
-        for (unsigned i = 0; i < 254; ++i) assert(output[i] == 0.25f);
         SpotifyAudioProbeSetObserver(NULL); CFRelease(input);
     }
     AVAudioPlayerNode *player = [AVAudioPlayerNode new]; originalPlayer = pcm(NO);
@@ -121,5 +130,21 @@ int main(void) { @autoreleasepool {
     SAPSnapshot s; SpotifyAudioProbeReadSnapshot(&s);
     assert(s.objcHooks == 5 && s.sampleBufferCalls == 9 && s.playerBufferCalls == 2 && s.callbacks == 10);
     assert(sinkCalls == 11 && s.compressedBuffers == 1 && completions == 2 && s.extractionErrors == 0);
-    printf("PASS: actual Objective-C method interception; CoreMedia interleaved/planar PCM; passthrough identity; independent mutable copies; unchanged originals; metadata/timing; WAV capture; nested scheduling and completions. AV hooks=%u calls=%llu/%llu\n", s.objcHooks, s.sampleBufferCalls, s.playerBufferCalls);
+    // A chained original may reenter and throw. Catching that exception must
+    // leave subsequent calls on this thread eligible for Pixie processing.
+    AVAudioPCMBuffer *recoveryPCM = pcm(NO);
+    CMSampleBufferRef recoverySample = sample(recoveryPCM);
+    lastOriginal = recoverySample; expected = 0.5f;
+    uint64_t callsBeforeException = s.sampleBufferCalls;
+    reenterAndThrow = YES;
+    BOOL exceptionObserved = NO;
+    @try { [renderer enqueueSampleBuffer:recoverySample]; }
+    @catch (NSException *exception) { exceptionObserved = [exception.name isEqual:@"NestedEnqueueOriginal"]; }
+    assert(exceptionObserved && enqueueExceptionCalls == 2);
+    [renderer enqueueSampleBuffer:recoverySample];
+    SpotifyAudioProbeReadSnapshot(&s);
+    assert(s.sampleBufferCalls == callsBeforeException + 2 && sinkCalls == 12);
+    CFRelease(recoverySample);
+    puts("PASS: nested original enqueue exception propagates; later buffers still reach Pixie processing");
+    printf("PASS: actual Objective-C method interception; CoreMedia interleaved/planar PCM; passthrough identity; independent mutable copies; unchanged originals; metadata/timing; nested scheduling and completions. AV hooks=%u calls=%llu/%llu\n", s.objcHooks, s.sampleBufferCalls, s.playerBufferCalls);
 } }

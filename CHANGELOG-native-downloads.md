@@ -1,5 +1,12 @@
 # Native Downloads changelog
 
+## Eevee-Pixie v1.3 — 2026-10-26
+
+- Updated Spotify to v9.1.90 and Pixie Manager to v1.3
+- Download releases directly from artist profiles, download separately or into a new or existing playlist
+
+Source update only. No IPA or DEB is uploaded; existing jailbreak releases remain unchanged.
+
 ## Eevee-Pixie v1 — 2026-10-21
 
 - Port Pixie menu: Download, Download compatibility, Status, Diagnostics and Me.

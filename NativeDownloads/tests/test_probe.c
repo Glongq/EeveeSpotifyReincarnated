@@ -1,6 +1,5 @@
 #include "Diagnostics.h"
 #include "AudioProbeBackend.h"
-#include "CaptureRing.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -73,20 +72,11 @@ int main(void) {
     SpotifyAudioProbeSetObserver(scale);
     invoke(samples, 128);
     assert(observerCalls == 1 && samples[0] == 0.25f);
-    SAPCaptureFormat captured;
-    assert(SpotifyAudioProbeBeginCapture(&captured) && captured.channels == 2 && captured.sampleRate == 48000);
-    invoke(samples, 128);
-    SpotifyAudioProbeEndCapture();
-    float copied[256];
-    assert(SpotifyAudioProbeReadCapture(copied, sizeof(copied)) == sizeof(copied));
-    for (unsigned i = 0; i < 256; ++i) assert(copied[i] == 0.25f);
-    assert(SpotifyAudioProbeReadCapture(copied, sizeof(copied)) == 0);
-    assert(SpotifyAudioProbeDroppedCaptureFrames() == 0);
     renderResult = -777;
     invoke(samples, 128);
-    assert(observerCalls == 2);
+    assert(observerCalls == 1);
     SpotifyAudioProbeReadSnapshot(&snapshot);
-    assert(snapshot.callbackErrors == 1 && originalCalls == 5 && snapshot.mutedCallbacks == 1);
+    assert(snapshot.callbackErrors == 1 && originalCalls == 4 && snapshot.mutedCallbacks == 1);
     renderResult = 0;
     SpotifyAudioProbeSetObserver(NULL);
     AURenderCallbackStruct previous = installed;
@@ -107,23 +97,7 @@ int main(void) {
     assert(snapshot.lastCallbackScope == kAudioUnitScope_Global && snapshot.callbackAttempts == 3);
     assert(snapshot.setPropertyCalls == 3 && snapshot.pcmConfirmed);
 
-    // Planar signed PCM must be interleaved and normalized correctly.
-    AudioStreamBasicDescription planar = {44100, kAudioFormatLinearPCM, kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved, 2, 1, 2, 2, 16, 0};
-    assert(SAPCaptureStart((void *)9, &planar));
-    int16_t left[] = {16384, -32768}, right[] = {8192, 32767};
-    struct { UInt32 count; AudioBuffer buffers[2]; } stereo = {2, {{1, sizeof(left), left}, {1, sizeof(right), right}}};
-    SAPCapturePush((void *)9, &planar, (AudioBufferList *)&stereo, 2);
-    SpotifyAudioProbeEndCapture();
-    float result[4]; assert(SpotifyAudioProbeReadCapture(result, sizeof(result)) == sizeof(result));
-    assert(result[0] == 0.5f && result[1] == 0.25f && result[2] == -1.0f && result[3] == 32767.0f / 32768.0f);
-    assert(SAPCaptureStart((void *)9, &planar));
-    AudioStreamBasicDescription changed = planar; changed.mSampleRate = 48000;
-    SAPCapturePush((void *)9, &changed, (AudioBufferList *)&stereo, 2);
-    SpotifyAudioProbeEndCapture();
-    assert(SpotifyAudioProbeCaptureFormatChanged() && SpotifyAudioProbeDroppedCaptureFrames() == 2);
-    changed = planar; changed.mBitsPerChannel = 24;
-    assert(!SAPCaptureStart((void *)9, &changed));
-    // Recording and the explicit mute action must work with diagnostics off,
+    // Manual mute and the PCM observer remain available with diagnostics off,
     // while sample metering and per-buffer counters remain stopped.
     SAPDiagnosticsSetEnabled(false);
     SpotifyAudioProbeReadSnapshot(&snapshot);uint64_t beforeCallbacks=snapshot.callbacks,beforeBytes=snapshot.pcmBytes;
@@ -131,15 +105,12 @@ int main(void) {
     SpotifyAudioProbeReadSnapshot(&snapshot);
     assert(snapshot.pcmConfirmed && snapshot.callbacks==beforeCallbacks && snapshot.pcmBytes==beforeBytes);
     for(unsigned i=0;i<256;i++)assert(samples[i]==0.5f);
-    assert(SpotifyAudioProbeBeginCapture(&captured));invoke(samples,128);SpotifyAudioProbeEndCapture();
-    assert(SpotifyAudioProbeReadCapture(copied,sizeof(copied))==sizeof(copied));
-    for(unsigned i=0;i<256;i++)assert(copied[i]==0.5f);
     assert(SpotifyAudioProbeMuteForSeconds(2));invoke(samples,128);
     for(unsigned i=0;i<256;i++)assert(samples[i]==0);
     assert(SpotifyAudioProbeMuteForSeconds(0));
     SpotifyAudioProbeReadSnapshot(&snapshot);assert(snapshot.callbacks==beforeCallbacks && snapshot.pcmBytes==beforeBytes);
     SAPDiagnosticsSetEnabled(true);invoke(samples,128);SpotifyAudioProbeReadSnapshot(&snapshot);
     assert(snapshot.callbacks==beforeCallbacks+1 && snapshot.pcmBytes==beforeBytes+1024);
-    puts("PASS: diagnostics OFF preserves playback, capture and manual mute; counters stop and resume");
-    puts("PASS: callback forwarding, original getter, untouched passthrough, PCM detection, mute, mutable observer, capture, errors, replacement lifetime, planar conversion, format-change rejection");
+    puts("PASS: diagnostics OFF preserves playback, observer and manual mute; counters stop and resume");
+    puts("PASS: callback forwarding, original getter, untouched passthrough, PCM detection, mute, mutable observer, errors and replacement lifetime");
 }

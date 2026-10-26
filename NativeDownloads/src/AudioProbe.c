@@ -1,6 +1,4 @@
 #include "AudioProbeBackend.h"
-#include "CaptureRing.h"
-#include "Features.h"
 #include <dlfcn.h>
 #include <math.h>
 #include <mach/mach_time.h>
@@ -77,7 +75,27 @@ static bool ready(void) {
     return atomic_load_explicit(&backendReady, memory_order_acquire);
 }
 
-
+#if SAP_JAILBREAK
+// Rebind before Vitrine's constructor, matching the IPA's import chain. Preserve
+// any previous import hook as our backend rather than bypassing another tweak.
+extern bool SAPJBRebindImport(const char *,void *,void **);
+bool SAPInstallJailbreakAudioImports(void) {
+    if(!ready())return false;
+    bool complete=true;
+#define SAP_BIND(name,member) do { \
+    void *held=NULL; \
+    if(!SAPJBRebindImport(#name,(void *)name,&held)||!held||held==(void *)name)complete=false; \
+    else api.member=(__typeof__(api.member))held; \
+} while(0)
+    SAP_BIND(AudioUnitSetProperty,set);
+    SAP_BIND(AudioUnitGetProperty,get);
+    SAP_BIND(AudioOutputUnitStart,start);
+    SAP_BIND(AudioOutputUnitStop,stop);
+    SAP_BIND(AudioComponentInstanceDispose,dispose);
+#undef SAP_BIND
+    return complete;
+}
+#endif
 
 // Caller holds setupLock. A newly published format is immutable forever.
 static void updateFormat(SAPContext *context) {
@@ -99,6 +117,19 @@ static void updateFormat(SAPContext *context) {
 static uint64_t availableBytes(const AudioBuffer *buffer, const AudioStreamBasicDescription *format, UInt32 frames) {
     uint64_t expected = (uint64_t)format->mBytesPerFrame * frames;
     return expected < buffer->mDataByteSize ? expected : buffer->mDataByteSize;
+}
+
+static bool formatSupported(const AudioStreamBasicDescription *format) {
+    if (!format || format->mFormatID != kAudioFormatLinearPCM || !format->mBytesPerFrame
+        || !format->mChannelsPerFrame || format->mChannelsPerFrame > 32 || format->mSampleRate <= 0
+        || (format->mFormatFlags & kAudioFormatFlagIsBigEndian)
+        || !(format->mFormatFlags & kAudioFormatFlagIsPacked)) return false;
+    bool floating = format->mFormatFlags & kAudioFormatFlagIsFloat;
+    bool integer = format->mFormatFlags & kAudioFormatFlagIsSignedInteger;
+    unsigned bits = format->mBitsPerChannel;
+    if (!((floating && bits == 32) || (integer && (bits == 16 || bits == 32)))) return false;
+    unsigned channels = (format->mFormatFlags & kAudioFormatFlagIsNonInterleaved) ? 1 : format->mChannelsPerFrame;
+    return (uint64_t)channels * (bits / 8) == format->mBytesPerFrame;
 }
 
 static uint32_t peak(const AudioBufferList *data, const AudioStreamBasicDescription *format, UInt32 frames) {
@@ -139,13 +170,9 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
     SAPPCMObserver callback = atomic_load_explicit(&observer, memory_order_acquire);
     uint64_t deadline = atomic_load_explicit(&muteUntil, memory_order_relaxed);
     bool muting=deadline && now<deadline;
-    bool capturing=false;
-#if SAP_ENABLE_WAV_CAPTURE
-    capturing=SAPCaptureActive();
-#endif
     // Keep timestamp/source availability for manual mute and source selection.
     // Idle playback does not scan samples, count bytes or copy audio.
-    if(!diagnostic && !callback && !muting && !capturing)return;
+    if(!diagnostic && !callback && !muting)return;
     uint64_t bytes = 0;
     for (UInt32 i = 0; i < data->mNumberBuffers; ++i) {
         if (data->mBuffers[i].mData) bytes += availableBytes(&data->mBuffers[i], format, frames);
@@ -155,7 +182,7 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
         atomic_store_explicit(&context->lastFrames, frames, memory_order_relaxed);
         atomic_fetch_add_explicit(&context->bytes, bytes, memory_order_relaxed);
     }
-    bool canMute = SAPFormatSupported(format);
+    bool canMute = formatSupported(format);
     if (diagnostic && canMute) {
         uint32_t level = peak(data, format, frames);
         atomic_store_explicit(&context->peak, level, memory_order_relaxed);
@@ -168,9 +195,6 @@ static void processPCM(SAPContext *context, const AudioStreamBasicDescription *f
         }
         if(diagnostic)atomic_fetch_add_explicit(&context->muted, 1, memory_order_relaxed);
     }
-#if SAP_ENABLE_WAV_CAPTURE
-    SAPCapturePush(context, format, data, frames);
-#endif
 }
 
 static OSStatus render(void *refcon, AudioUnitRenderActionFlags *flags,
@@ -401,7 +425,7 @@ SAP_EXPORT void SpotifyAudioProbeReadSnapshot(SAPSnapshot *out) {
         out->formatID = format->mFormatID;
         out->formatFlags = format->mFormatFlags;
         out->bitsPerChannel = format->mBitsPerChannel;
-        out->muteSupported = SAPFormatSupported(format);
+        out->muteSupported = formatSupported(format);
     }
     out->pcmConfirmed = atomic_load(&selected->receivedPCM) && format && format->mFormatID == kAudioFormatLinearPCM;
 }
@@ -415,28 +439,6 @@ SAP_EXPORT bool SpotifyAudioProbeMuteForSeconds(double seconds) {
     uint64_t ticks = (uint64_t)(nanos * timebase.denom / timebase.numer);
     atomic_store(&muteUntil, mach_absolute_time() + ticks);
     return true;
-}
-
-SAP_EXPORT bool SpotifyAudioProbeBeginCapture(SAPCaptureFormat *out) {
-#if SAP_ENABLE_WAV_CAPTURE
-    if (!out) return false;
-    pthread_mutex_lock(&setupLock);
-    SAPContext *selected = NULL;
-    unsigned count = atomic_load(&contextCount);
-    for (unsigned i = 0; i < count; ++i) {
-        if (atomic_load(&contexts[i].published) && !atomic_load(&contexts[i].retired)
-            && atomic_load(&contexts[i].receivedPCM)
-            && (!selected || atomic_load(&contexts[i].lastTick) > atomic_load(&selected->lastTick))) selected = &contexts[i];
-    }
-    const AudioStreamBasicDescription *format = selected ? atomic_load(&selected->format) : NULL;
-    bool result = selected && format && SAPCaptureStart(selected, format);
-    if (result) { out->sampleRate = format->mSampleRate; out->channels = format->mChannelsPerFrame; }
-    pthread_mutex_unlock(&setupLock);
-    return result;
-#else
-    if(out)memset(out,0,sizeof(*out));
-    return false;
-#endif
 }
 
 #ifdef SAP_TESTING

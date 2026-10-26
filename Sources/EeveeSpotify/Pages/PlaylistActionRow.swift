@@ -113,18 +113,11 @@ final class PlaylistActionRow: UIView {
         dot.isHidden = true
         return dot
     }()
+    private let artistDownloadButton = PlaylistActionRow.circle("arrow.down")
     private let addButton = PlaylistActionRow.circle("plus")
+    private weak var artistHeader: UIView?
     private let followButton: UIButton = {
-        var config = UIButton.Configuration.glass()
-        config.cornerStyle = .capsule
-        config.baseForegroundColor = .white
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 18)
-        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
-            var attributes = $0
-            attributes.font = .systemFont(ofSize: 15, weight: .semibold)
-            return attributes
-        }
-        let button = UIButton(configuration: config)
+        let button = PlaylistActionRow.circle("person.badge.plus")
         button.isHidden = true
         return button
     }()
@@ -146,6 +139,8 @@ final class PlaylistActionRow: UIView {
 
     private static let playImage = UIImage(systemName: "play.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
     private static let pauseImage = UIImage(systemName: "pause.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
+    private static let followImage = UIImage(systemName: "person.badge.plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+    private static let followedImage = UIImage(systemName: "person.fill.checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let plusImage = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let checkImage = UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let playTitle = "playlist_play".localized
@@ -170,6 +165,10 @@ final class PlaylistActionRow: UIView {
         actions.contentInsetAdjustmentBehavior = .never
         addSubview(actions)
         addSubview(playButton)
+        artistDownloadButton.accessibilityIdentifier = "Eevee.Artist.Download"
+        artistDownloadButton.accessibilityLabel = "Artist downloads"
+        artistDownloadButton.isHidden = true
+        actions.addSubview(artistDownloadButton)
         for (button, name) in [(shuffleButton,"Shuffle"),(addButton,"Add"),(shareButton,"Share"),(followButton,"Follow")] {
             button.accessibilityIdentifier = "Eevee.Playlist." + name
             actions.addSubview(button)
@@ -207,8 +206,8 @@ final class PlaylistActionRow: UIView {
             if native.frame != frame { native.frame = frame }
             x += size.width + gap
         }
-        for button in [shuffleButton, addButton, shareButton, followButton] where !button.isHidden {
-            let width = button === followButton ? max(side, button.intrinsicContentSize.width) : side
+        for button in [shuffleButton, artistDownloadButton, addButton, shareButton, followButton] where !button.isHidden {
+            let width = side
             let frame = CGRect(x: x, y: 0, width: width, height: side)
             if button.frame != frame { button.frame = frame }
             x += width + gap
@@ -279,17 +278,33 @@ final class PlaylistActionRow: UIView {
         for delay in [0.4, 1.2, 2.5] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.sync() } }
     }
 
+    func bindArtistDownloads(header: UIView?) {
+        artistHeader = header
+        guard let header else {
+            if !artistDownloadButton.isHidden { artistDownloadButton.isHidden = true; setNeedsLayout() }
+            return
+        }
+        let wasHidden = artistDownloadButton.isHidden
+        EeveePixieUpdateArtistDownloads(header, artistDownloadButton)
+        if wasHidden != artistDownloadButton.isHidden { setNeedsLayout() }
+    }
+
     func sync() {
         if addButton.isHidden != (add == nil) {
             addButton.isHidden = add == nil
             setNeedsLayout()
         }
-        let followTitle = followControl?.eeveeFirst(UILabel.self)?.text
+        let followVisible = followControl != nil
         var followConfig = followButton.configuration
-        followConfig?.title = followTitle
-        if followButton.configuration != followConfig || followButton.isHidden != (followTitle == nil) {
+        let state = artistHeader.map { header in
+            EeveePixieArtistFollowing(header) { [weak self] in self?.sync() }
+        } ?? -1
+        followConfig?.image = state == 1 ? Self.followedImage : Self.followImage
+        followConfig?.baseForegroundColor = state == 1 ? Theme.accent : .white
+        followButton.accessibilityLabel = followControl?.accessibilityLabel ?? followControl?.eeveeFirst(UILabel.self)?.text
+        if followButton.configuration != followConfig || followButton.isHidden == followVisible {
             followButton.configuration = followConfig
-            followButton.isHidden = followTitle == nil
+            followButton.isHidden = !followVisible
             setNeedsLayout()
         }
         if shareButton.isHidden != (share == nil) {

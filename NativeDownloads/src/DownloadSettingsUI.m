@@ -1,5 +1,6 @@
 #import "Localization.h"
 #import "DownloadCompatibility.h"
+#import "OfflineDevices.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -16,6 +17,12 @@ static const void *SAPAttachmentKey=&SAPAttachmentKey;
 static void *SAPContentSizeContext=&SAPContentSizeContext;
 static void (*originalSettingsLoad)(id,SEL);
 static void (*originalSettingsLayout)(id,SEL);
+static id (*originalVitrinePageInit)(id,SEL,id,id,id,id);
+static BOOL settingsInstalled;
+static NSString *settingsInstallStatus=@"not_attempted";
+NSDictionary *SAPDownloadSettingsInstallReport(void) {
+    return @{@"installed":@(settingsInstalled),@"status":settingsInstallStatus};
+}
 
 // Resolve Spotify's bottom chrome once per page. Layout callbacks only read
 // the cached views' current geometry; there is no timer or playback hook.
@@ -84,7 +91,7 @@ static UIImage *SAPSettingsIcon(NSString *symbol,UIColor *color,UITraitCollectio
     UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc]initWithSize:CGSizeMake(30,30) format:format];
     UIImage *result=[renderer imageWithActions:^(UIGraphicsImageRendererContext *context){
         UIBezierPath *shape=[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0,0,30,30) cornerRadius:8];
-        if([symbol isEqual:@"sprite.github"]) {
+        if([symbol isEqual:@"pixie.github"]) {
             [UIColor.whiteColor setFill];[shape fill];
             static UIImage *logo;static dispatch_once_t logoOnce;
             dispatch_once(&logoOnce,^{logo=[UIImage imageWithData:[NSData dataWithBytesNoCopy:(void *)SAPGitHubIconPNG length:sizeof(SAPGitHubIconPNG) freeWhenDone:NO]];});
@@ -139,7 +146,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc]initWithImage:[UIImage systemImageNamed:@"arrow.clockwise"] style:UIBarButtonItemStylePlain target:self action:@selector(refresh)];
 }
 - (void)viewDidLayoutSubviews {[super viewDidLayoutSubviews];[self updateBottomInset];}
-- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];SAP_TRACE("ui","sprite_page_appeared",0,@{@"title":self.title?:@"",@"controller":NSStringFromClass(self.class)});}
+- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];SAP_TRACE("ui","pixie_page_appeared",0,@{@"title":self.title?:@"",@"controller":NSStringFromClass(self.class)});}
 - (void)viewSafeAreaInsetsDidChange {[super viewSafeAreaInsetsDidChange];[self updateBottomInset];}
 - (void)updateBottomInset {
     if(!self.tableView.window)return;
@@ -181,68 +188,267 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 }
 @end
 
+static NSString *SAPObservedValue(id value) {
+    if(!value||value==NSNull.null)return @"Unavailable";
+    if([value isKindOfClass:NSNumber.class])return [value stringValue];
+    return [value isKindOfClass:NSString.class]&&[value length]?value:@"Unavailable";
+}
+static UITableViewCell *SAPPlainSettingsCell(NSString *label,NSString *value) {
+    UITableViewCell *cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
+    cell.textLabel.text=label;cell.textLabel.numberOfLines=0;
+    cell.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    cell.detailTextLabel.text=value;cell.detailTextLabel.numberOfLines=0;
+    cell.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    cell.detailTextLabel.textColor=UIColor.secondaryLabelColor;
+    cell.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;cell.selectionStyle=UITableViewCellSelectionStyleNone;
+    return cell;
+}
 @interface SAPDetailsSettings : SAPSettingsTable
-@property(nonatomic) BOOL journal;
 @property(nonatomic) NSUInteger detailsGeneration;
 @end
 @implementation SAPDetailsSettings
-- (void)viewDidLoad {[super viewDidLoad];self.title=self.journal?SAPL(@"Состояние загрузок",@"Download status"):SAPL(@"Диагностика аудио",@"Audio diagnostics");}
+- (void)viewDidLoad {[super viewDidLoad];self.title=@"Audio diagnostics";self.tableView.separatorInset=UIEdgeInsetsMake(0,20,0,20);}
 - (void)refresh {
-    if(self.journal && SAPDiagnosticsEnabled())[SAPSettingsActions perform:SAPSettingsRefreshJournal];
-    [self fetchDetails];NSUInteger expected=self.detailsGeneration;__weak typeof(self) weak=self;
-    if(self.journal && SAPDiagnosticsEnabled())dispatch_after(dispatch_time(DISPATCH_TIME_NOW,1200*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
-        if(weak.detailsGeneration==expected && weak.view.window && SAPDiagnosticsEnabled())[weak fetchDetails];
-    });
-}
-- (void)fetchDetails {
     NSUInteger expected=++self.detailsGeneration;__weak typeof(self) weak=self;
-    if(!self.snapshot){NSMutableDictionary *loading=[[SAPSettingsActions snapshot]mutableCopy];loading[@"journal_summary"]=loading[@"diagnostics"]=SAPL(@"Обновление…",@"Updating…");self.snapshot=loading;[self.tableView reloadData];}
-    [SAPSettingsActions loadDetails:self.journal completion:^(NSDictionary *value){
+    [SAPSettingsActions loadDetails:NO completion:^(NSDictionary *value){
         if(weak.detailsGeneration!=expected)return;weak.snapshot=value;[weak.tableView reloadData];
     }];
 }
 - (void)viewWillDisappear:(BOOL)animated {self.detailsGeneration++;[super viewWillDisappear:animated];}
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 2;}
-- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {return 1;}
-- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {return section==0?SAPL(@"Текущее состояние",@"Current status"):SAPL(@"Действия",@"Actions");}
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 4;}
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {return section==0?6:section==1?8:section==2?5:5;}
+- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {return @[@"Audio",@"Status",@"Offline checks",@"Hooks / traces"][section];}
+- (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
+    if(section==0)return SAPDiagnosticsEnabled()?@"Observed values only. Refresh reads the existing diagnostics snapshot.":@"Diagnostics are off. Collection and polling are stopped. Retained observations may be stale; missing data is unavailable.";
+    if(section==1)return @"Unique tracks by final observed state. This is the retained journal snapshot, not your entire library.";
+    if(section==2)return @"Native source: Spotify's in-process offline API. Refresh quotas and licenses in Download compatibility for a new explicit check.";
+    return @"Detailed events remain in Send log.";
+}
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
-    if(index.section==0) {
-        UITableViewCell *cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        UIListContentConfiguration *content=[UIListContentConfiguration cellConfiguration];
-        content.text=self.snapshot[self.journal?@"journal_summary":@"diagnostics"]?:SAPL(@"Нет данных",@"No data");
-        content.textProperties.font=[UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
-        content.textProperties.numberOfLines=0;content.textProperties.color=UIColor.labelColor;
-        content.directionalLayoutMargins=NSDirectionalEdgeInsetsMake(16,20,16,20);cell.contentConfiguration=content;
-        cell.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;cell.selectionStyle=UITableViewCellSelectionStyleNone;return cell;
+    NSDictionary *report=self.snapshot[@"report"]?:@{};NSString *label,*value;
+    if(index.section==1) {
+        NSArray *labels=@[@"Downloaded",@"Downloading",@"Waiting",@"Paused",@"Errors",@"Limit reached",@"Not downloaded",@"Expired"];
+        NSArray *keys=@[@"downloaded",@"downloading",@"waiting",@"awaiting_redownload",@"error",@"waiting_limit_exceeded",@"not_downloaded",@"expired"];
+        NSDictionary *counts=report[@"track_journal"][@"state_counts"];
+        label=labels[index.row];value=[counts isKindOfClass:NSDictionary.class]?SAPObservedValue(counts[keys[index.row]]?:@0):@"Unavailable";
+    }else if(index.section==0) {
+        label=@[@"PCM confirmed",@"Callbacks",@"Frames",@"PCM bytes",@"Format",@"Output"][index.row];
+        if(index.row==4)value=report[@"sample_rate"]&&report[@"channels"]?[NSString stringWithFormat:@"%@ Hz · %@ ch · %@ bit",report[@"sample_rate"],report[@"channels"],SAPObservedValue(report[@"bits_per_channel"])]:@"Unavailable";
+        else value=SAPObservedValue(report[@[@"pcm_confirmed",@"callbacks",@"frames",@"pcm_bytes",@"format",@"route"][index.row]]);
+    }else if(index.section==2) {
+        NSDictionary *check=report[@"compatibility_check"],*sources=check[@"sources"],*license=sources[@"licenses"];
+        label=@[@"Native check",@"Free device slots",@"Offline playback",@"Local track quota",@"Local device read"][index.row];
+        if(index.row==0) {
+            NSString *status=check[@"status"];
+            double age=NSDate.date.timeIntervalSince1970-[check[@"finished_at"]doubleValue];
+            value=check[@"finished_at"]?[NSString stringWithFormat:@"%@ · %@",SAPObservedValue(status),age>90?@"stale":@"recent snapshot"]:SAPObservedValue(status);
+        }else if(index.row==1)value=[license[@"read_status"]isEqual:@"received"]&&license[@"free_licenses"]&&license[@"max_licenses"]?[NSString stringWithFormat:@"%@ / %@",license[@"free_licenses"],license[@"max_licenses"]]:SAPObservedValue(license[@"read_status"]);
+        else if(index.row==2)value=[sources[@"playback"][@"read_status"]isEqual:@"received"]?([sources[@"playback"][@"allowed"]boolValue]?@"Allowed":@"Not allowed"):SAPObservedValue(sources[@"playback"][@"read_status"]);
+        else if(index.row==3)value=sources[@"native"][@"current_tracks"]&&sources[@"native"][@"music_limit"]?[NSString stringWithFormat:@"%@ / %@",sources[@"native"][@"current_tracks"],sources[@"native"][@"music_limit"]]:SAPObservedValue(sources[@"native"][@"read_status"]);
+        else value=SAPObservedValue(sources[@"local_device"][@"read_status"]);
+    }else {
+        label=@[@"AV hooks",@"AU calls",@"Callback errors",@"Trace active",@"Trace run"][index.row];
+        value=index.row<3?SAPObservedValue(report[@[@"objc_hooks",@"au_set_calls",@"callback_errors"][index.row]]):SAPObservedValue(report[@"trace_coverage"][index.row==3?@"active":@"run_id"]);
     }
-    return SAPSettingsCell(table,@"Refresh status",nil,@"arrow.clockwise",UIColor.systemBlueColor,NO);
+    return SAPPlainSettingsCell(label,value);
 }
-- (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {
-    [table deselectRowAtIndexPath:index animated:YES];if(index.section==0)return;
-    [self refresh];
+@end
+
+@interface SAPOfflineDevicesSettings : SAPSettingsTable
+@property(nonatomic,strong) NSDictionary *plan;
+@property(nonatomic,copy) NSArray *enabledDevices;
+@property(nonatomic,copy) NSString *readError;
+@property(nonatomic) BOOL busy;
+@property(nonatomic) NSUInteger refreshGeneration;
+@end
+@implementation SAPOfflineDevicesSettings
+@synthesize plan=_plan;
+- (void)setPlan:(NSDictionary *)plan {
+    _plan=plan;
+    NSMutableArray *enabled=[NSMutableArray array];
+    for(NSDictionary *device in plan[@"devices"])
+        if([device[@"offline_enabled"]boolValue])[enabled addObject:device];
+    self.enabledDevices=enabled;
 }
+- (void)viewDidLoad {[super viewDidLoad];self.title=@"Offline devices";self.tableView.separatorInset=UIEdgeInsetsMake(0,20,0,20);}
+- (void)refresh {
+    if(self.busy)return;self.busy=YES;self.readError=nil;[self.tableView reloadData];
+    NSUInteger expected=++self.refreshGeneration;
+    SAPPreviewOfflineDeviceSlots(^(NSDictionary *plan,NSString *error){
+        if(expected!=self.refreshGeneration)return;self.busy=NO;self.plan=plan;self.readError=error;[self.tableView reloadData];
+    });
+}
+- (NSArray *)devices {return self.enabledDevices?:@[];}
+- (BOOL)actionsAllowed {
+    double age=NSDate.date.timeIntervalSince1970-[self.plan[@"created_at"]doubleValue];
+    return !self.busy&&[self.plan[@"actions_allowed"]boolValue]&&age>=0&&age<=90;
+}
+- (NSDictionary *)currentDevice {for(NSDictionary *device in self.plan[@"devices"])if([device[@"is_current_device"]boolValue])return device;return nil;}
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 3;}
+- (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {return section==0?MAX(1,self.devices.count):section==1?1:3;}
+- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
+    if(section==1) {
+        NSDictionary *current=self.currentDevice;
+        if(current)return [NSString stringWithFormat:@"%@ (current)",[current[@"name"]length]?current[@"name"]:@"Spotify device"];
+        return @"Current device";
+    }
+    return section==0?@"Devices":@"Source checks";
+}
+- (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
+    if(section==2) {
+        if(self.busy)return @"Refreshing native and direct sources…";
+        double age=NSDate.date.timeIntervalSince1970-[self.plan[@"created_at"]doubleValue];
+        if(self.plan&&age>90)return @"This snapshot is stale. Refresh before changing registrations.";
+        return self.readError?:self.plan[@"detail"]?:@"Native and direct source states agree. Each change is sent once and verified by a fresh read.";
+    }
+    if(section==0)return @"Only devices with offline access enabled are shown. Swipe left to disable offline access. Cached tracks on that copy may become unavailable.";
+    return @"Play one track online on this device, then refresh if authentication or the local device identity is unavailable.";
+}
+- (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
+    if(index.section==2) {
+        NSString *value=index.row==0?SAPObservedValue(self.plan[@"native_read_status"]):index.row==1?SAPObservedValue(self.plan[@"direct_read_status"]):self.plan[@"free_licenses"]?[NSString stringWithFormat:@"%@ / %@",self.plan[@"free_licenses"],self.plan[@"max_licenses"]]:@"Unavailable";
+        return SAPPlainSettingsCell(@[@"Native source",@"Direct source",[NSString stringWithFormat:@"Free / maximum slots (%@)",self.plan[@"quota_source"]?:@"unavailable"]][index.row],value);
+    }
+    if(index.section==1) {
+        BOOL enable=self.actionsAllowed&&self.currentDevice&&![self.currentDevice[@"offline_enabled"]boolValue];
+        NSString *title=self.actionsAllowed&&[self.currentDevice[@"offline_enabled"]boolValue]?@"Offline enabled on this device":@"Enable offline on this device";
+        UITableViewCell *cell=SAPSettingsCell(table,title,self.busy?@"Checking…":self.actionsAllowed&&[self.currentDevice[@"offline_enabled"]boolValue]?@"Offline enabled":enable?@"Uses one available slot":@"Refresh to confirm the current registration",@"iphone.badge.play",UIColor.systemBlueColor,NO);
+        cell.userInteractionEnabled=enable;cell.selectionStyle=enable?UITableViewCellSelectionStyleDefault:UITableViewCellSelectionStyleNone;return cell;
+    }
+    if(!self.devices.count) {
+        BOOL unavailable=!self.plan||self.readError;
+        return SAPPlainSettingsCell(self.busy?@"Offline devices":unavailable?@"Device list unavailable":@"No offline-enabled devices",
+            self.busy?@"Loading…":unavailable?@"Refresh to read the current list":@"No active offline registrations in this snapshot");
+    }
+    NSDictionary *device=self.devices[index.row];NSString *cache=device[@"cache_id"]?:@"";
+    NSString *suffix=[cache substringFromIndex:cache.length>8?cache.length-8:0];
+    NSString *identifier=device[@"device_id"]?:@"";NSString *deviceSuffix=[identifier substringFromIndex:identifier.length>8?identifier.length-8:0];
+    NSString *name=[device[@"name"]length]?device[@"name"]:@"Spotify device";
+    NSString *subtitle=[device[@"registration_status"]isEqual:@"not_registered"]?@"Not registered (not listed)":[device[@"offline_enabled"]boolValue]?@"Offline enabled":@"Offline disabled";
+    NSUInteger matchingNames=0,matchingIdentifiers=0;
+    for(NSDictionary *candidate in self.devices) {
+        NSString *candidateName=[candidate[@"name"]length]?candidate[@"name"]:@"Spotify device";
+        if([candidateName isEqual:name]) {
+            matchingNames++;if([candidate[@"device_id"]isEqual:identifier])matchingIdentifiers++;
+        }
+    }
+    if(matchingNames>1)subtitle=[NSString stringWithFormat:@"%@ · Device %@",subtitle,deviceSuffix];
+    if(matchingIdentifiers>1)subtitle=[NSString stringWithFormat:@"%@ · Cache %@",subtitle,suffix];
+    UITableViewCell *cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+    UIListContentConfiguration *content=[UIListContentConfiguration subtitleCellConfiguration];
+    content.text=[device[@"is_current_device"]boolValue]?[name stringByAppendingString:@" (current)"]:name;content.secondaryText=subtitle;
+    content.textProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    content.secondaryTextProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    content.secondaryTextProperties.color=UIColor.secondaryLabelColor;content.secondaryTextProperties.numberOfLines=0;
+    cell.contentConfiguration=content;cell.accessibilityLabel=content.text;
+    cell.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor;cell.selectionStyle=UITableViewCellSelectionStyleNone;
+    return cell;
+}
+- (void)showResult:(NSString *)title message:(NSString *)message {
+    if(!self.view.window)return;
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];[self presentViewController:alert animated:YES completion:nil];
+}
+- (void)enableCurrent {
+    if(!self.actionsAllowed||!self.currentDevice||[self.currentDevice[@"offline_enabled"]boolValue])return;
+    self.busy=YES;[self.tableView reloadData];
+    SAPEnableOfflineOnCurrentDevice(^(NSDictionary *result,NSString *error){
+        self.busy=NO;[self refresh];[self showResult:error?@"Enable not confirmed":@"Offline registration confirmed" message:error?:@"Spotify confirms offline access for this exact device. Audio playback has not been tested."];
+    });
+}
+// Row editing is a UIKit capability. Freshness/authorization is checked when an
+// explicit action is requested, so stale snapshots do not silently remove the swipe.
+- (NSDictionary *)removableDeviceAtIndexPath:(NSIndexPath *)index {
+    if(self.busy || index.section!=0 || index.row<0 || (NSUInteger)index.row>=self.devices.count)return nil;
+    NSDictionary *device=self.devices[index.row];
+    return ![device[@"synthetic_record"]boolValue] && [device[@"offline_enabled"]boolValue] ? device : nil;
+}
+- (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)index {
+    return [self removableDeviceAtIndexPath:index]!=nil;
+}
+- (UITableViewCellEditingStyle)tableView:(UITableView *)table editingStyleForRowAtIndexPath:(NSIndexPath *)index {
+    return [self removableDeviceAtIndexPath:index] ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
+}
+- (void)requestDisable:(NSDictionary *)device {
+    if(self.busy)return;
+    if(self.actionsAllowed && [device[@"selection_token"]length]){[self confirmDisable:device];return;}
+    self.busy=YES;self.readError=nil;[self.tableView reloadData];
+    NSUInteger expected=++self.refreshGeneration;
+    SAPPreviewOfflineDeviceSlots(^(NSDictionary *plan,NSString *error){
+        if(expected!=self.refreshGeneration)return;
+        self.busy=NO;self.plan=plan;self.readError=error;[self.tableView reloadData];
+        if(!self.view.window)return;
+        if(!self.actionsAllowed) {
+            [self showResult:@"Cannot change offline access" message:error?:plan[@"detail"]?:@"Spotify's device state could not be confirmed. Play one track online on this device, then refresh."];
+            return;
+        }
+        NSDictionary *selected=nil;
+        for(NSDictionary *candidate in self.devices) {
+            if(![candidate[@"synthetic_record"]boolValue] &&
+               [candidate[@"device_id"]isEqual:device[@"device_id"]] &&
+               [candidate[@"cache_id"]isEqual:device[@"cache_id"]] &&
+               [candidate[@"selection_token"]length]){selected=candidate;break;}
+        }
+        if(!selected){[self showResult:@"Device list changed" message:@"This offline registration is no longer in the refreshed list. Nothing was changed."];return;}
+        [self confirmDisable:selected];
+    });
+}
+- (void)confirmDisable:(NSDictionary *)device {
+    if(!self.actionsAllowed){[self requestDisable:device];return;}
+    NSString *cache=device[@"cache_id"],*suffix=[cache substringFromIndex:cache.length>8?cache.length-8:0];
+    NSString *identifier=device[@"device_id"];NSString *deviceSuffix=[identifier substringFromIndex:identifier.length>8?identifier.length-8:0];
+    UIAlertController *confirm=[UIAlertController alertControllerWithTitle:@"Disable offline access?" message:[NSString stringWithFormat:@"%@ · Device %@ · Cache %@\n\nCached tracks on this copy may become unavailable offline. The registration and free slot will be verified after the command.",device[@"name"]?:@"Spotify device",deviceSuffix,suffix] preferredStyle:UIAlertControllerStyleAlert];
+    [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [confirm addAction:[UIAlertAction actionWithTitle:@"Disable offline access" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){
+        if(!self.actionsAllowed) {
+            [self dismissViewControllerAnimated:YES completion:^{[self showResult:@"Device list expired" message:@"Refresh the list and review this device again. Nothing was changed."];}];
+            return;
+        }
+        self.busy=YES;[self.tableView reloadData];
+        SAPDisableOfflineDevice(self.plan[@"id"],device[@"selection_token"],^(NSDictionary *result,NSString *error){
+            self.busy=NO;[self refresh];[self showResult:error?@"Disable not confirmed":@"Offline access disabled" message:error?:[NSString stringWithFormat:@"Free device slots: %@ / %@.",result[@"free_licenses"],result[@"max_licenses"]]];
+        });
+    }]];[self presentViewController:confirm animated:YES completion:nil];
+}
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)table trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)index {
+    NSDictionary *device=[self removableDeviceAtIndexPath:index];if(!device)return nil;
+    UIContextualAction *action=[UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Remove" handler:^(UIContextualAction *action,UIView *view,void (^done)(BOOL)){done(YES);[self requestDisable:device];}];
+    UISwipeActionsConfiguration *configuration=[UISwipeActionsConfiguration configurationWithActions:@[action]];configuration.performsFirstActionWithFullSwipe=NO;return configuration;
+}
+- (void)tableView:(UITableView *)table commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)index {
+    NSDictionary *device=[self removableDeviceAtIndexPath:index];
+    if(style==UITableViewCellEditingStyleDelete && device){[table setEditing:NO animated:YES];[self requestDisable:device];}
+}
+- (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {[table deselectRowAtIndexPath:index animated:YES];if(index.section==1)[self enableCurrent];}
 @end
 
 @interface SAPDownloadsSettings : SAPSettingsTable
 @property(nonatomic) BOOL checkingCompatibility;
 @end
 @implementation SAPDownloadsSettings
-- (void)viewDidLoad {[super viewDidLoad];self.title=SAPManagerName;}
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 5;}
+- (void)viewDidLoad {[super viewDidLoad];self.title=SAPL(@"Менеджер загрузок Pixie",@"Pixie Download Manager");}
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)table {return 4;}
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
     if(section==0)return [self.snapshot[@"download_active"]boolValue]?4:3;
-    if(section==1)return 4;
-    if(section==2)return 1;
+    if(section==1)return 3;
+    if(section==2)return 3;
     return 2;
 }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
-    return @[@"Download",@"Download compatibility",@"Status",@"Diagnostics",@"Me"][section];
+    return @[@"Download",@"Download compatibility",@"Diagnostics",@"Me"][section];
 }
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
-    if(section==0)return @"Tracks are saved in Spotify for offline listening.";
-    if(section==1)return [NSString stringWithFormat:@"%@\n\nDevice registrations control offline access on copies of Spotify.\n\nOnly change settings in this menu if downloads are not working.",self.snapshot[@"key_request_mode"][@"detail"]?:@""];
-    if(section==4)return @"Spotify 9.1.88 · Eevee-Pixie v1";
-    if(section==3)return @"Enable Diagnostics for detailed passive events.";
+    if(section==0) {
+        NSDictionary *startup=self.snapshot[@"jailbreak_bootstrap"];
+        if(startup&&![startup[@"native_patches_ready"]boolValue])return [NSString stringWithFormat:@"Pixie could not initialize downloads (%@). Supported Spotify: 9.1.90. Detected: %@. Menu and logs remain available.",startup[@"reason"],startup[@"detected_spotify_version"]];
+        return @"Tracks are saved in Spotify for offline listening.";
+    }
+    if(section==1) {
+        NSDictionary *mode=self.snapshot[@"key_request_mode"];
+        return [NSString stringWithFormat:@"%@\n\n5 licenses = up to 5 devices with offline music.\n\nOnly change settings in this menu if downloads are not working.",mode[@"detail"]?:@""];
+    }
+    if(section==3)return @"Spotify 9.1.90 · Eevee-Pixie v1.3.";
+    if(section==2)return @"Enable Diagnostics for detailed passive events.";
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index {
@@ -253,16 +459,15 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
         color=index.row==3?UIColor.systemOrangeColor:UIColor.systemGreenColor;
     }else if(index.section==1) {
         NSDictionary *mode=self.snapshot[@"key_request_mode"];
-        if(index.row==2)return SAPSettingsCell(table,@"Manage offline device slots",@"Troubleshooting only · may disable old copies' offline access",@"externaldrive.badge.person.crop",UIColor.systemOrangeColor,YES);
-        if(index.row==3)return SAPSettingsCell(table,@"Enable offline listening on this copy",@"Requests offline registration for this copy",@"iphone.badge.play",UIColor.systemGreenColor,NO);
+        if(index.row==2)return SAPSettingsCell(table,@"Offline devices",@"Review registrations and offline access",@"externaldrive.badge.person.crop",UIColor.systemOrangeColor,YES);
         if(index.row==1) {
             return SAPSettingsCell(table,@"Refresh quotas and licenses",self.checkingCompatibility?@"Checking Spotify's reported state…":@"Read only · no licenses or downloads are reset",@"arrow.clockwise",UIColor.systemBlueColor,NO);
         }
         NSInteger configured=[mode[@"configured_mode"]integerValue];
         title=@"Configured request mode";
         NSNumber *last=mode[@"last_selector_returned_mode"];
-        subtitle=self.checkingCompatibility?@"Checking quotas and licenses…":([mode[@"configuration_source"]isEqual:@"verified_direct_instruction"]||[mode[@"configuration_source"]isEqual:@"verified_static_trace_argument"])?@"Fixed for this build":
-            (last && last.integerValue>=0?[NSString stringWithFormat:@"Last selector returned %@ · authorization unconfirmed",last]:@"Configuration could not be verified");
+        subtitle=self.checkingCompatibility?@"Checking quotas and licenses…":([mode[@"configuration_source"]isEqual:@"verified_direct_instruction"]||[mode[@"configuration_source"]isEqual:@"verified_static_trace_argument"])?@"Verified fixed argument in the executable":
+            (last && last.integerValue>=0?[NSString stringWithFormat:@"Last selector returned %@ · authorization unconfirmed",last]:@"No selector invocation observed this launch");
         symbol=@"arrow.triangle.2.circlepath";color=UIColor.systemOrangeColor;chevron=YES;
         UITableViewCell *cell=SAPSettingsCell(table,title,subtitle,symbol,color,chevron);
         UILabel *status=[UILabel new];status.font=[UIFont monospacedDigitSystemFontOfSize:17 weight:UIFontWeightBold];
@@ -273,19 +478,18 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
         cell.selectionStyle=restore?UITableViewCellSelectionStyleDefault:UITableViewCellSelectionStyleNone;
         cell.userInteractionEnabled=restore;
         return cell;
-    }else if(index.section==2) {
-        title=@"Download status";symbol=@"chart.bar.fill";color=UIColor.systemBlueColor;chevron=YES;
-    }else if(index.section==4) {
+    }else if(index.section==3) {
         title=index.row==0?@"GitHub":@"Telegram channel";
-        subtitle=index.row==0?@"Glongq/EeveeSpotifyReincarnated":@"@glongqforks";
-        symbol=index.row==0?@"sprite.github":@"paperplane.fill";
+        subtitle=index.row==0?@"Glongq/Vitrine-Pixie":@"@glongqforks";
+        symbol=index.row==0?@"pixie.github":@"paperplane.fill";
         color=index.row==0?UIColor.whiteColor:UIColor.systemBlueColor;chevron=YES;
     }else {
-        title=@[@"Diagnostics",@"Audio diagnostics"][index.row];
-        symbol=@[@"slider.horizontal.3",@"waveform.path.ecg"][index.row];color=UIColor.systemTealColor;chevron=index.row==1;
+        title=@[@"Diagnostics",@"Audio diagnostics",@"Reset log"][index.row];
+        symbol=@[@"slider.horizontal.3",@"waveform.path.ecg",@"trash.fill"][index.row];color=index.row==2?UIColor.systemGrayColor:UIColor.systemTealColor;chevron=index.row==1;
+        if(index.row==2)subtitle=@"Clear previous logs and start a fresh history";
     }
     UITableViewCell *cell=SAPSettingsCell(table,title,subtitle,symbol,color,chevron);
-    if(index.section==3 && index.row==0) {
+    if(index.section==2 && index.row==0) {
         UISwitch *toggle=[UISwitch new];toggle.on=SAPDiagnosticsEnabled();
         toggle.accessibilityLabel=SAPL(@"Диагностика",@"Diagnostics");toggle.accessibilityIdentifier=@"SpotifyDiagnosticsSwitch";
         [toggle addTarget:self action:@selector(diagnosticsChanged:) forControlEvents:UIControlEventValueChanged];cell.accessoryView=toggle;
@@ -298,63 +502,18 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
-- (void)enableCurrentOffline {
-    if(self.checkingCompatibility)return;self.checkingCompatibility=YES;[self.tableView reloadData];
-    [SAPSettingsActions enableOfflineOnCurrentDevice:^(NSDictionary *result,NSString *error){
-        self.checkingCompatibility=NO;[self refresh];
-        [self slotMessage:error?@"Registration not confirmed":@"Offline registration confirmed" message:error?:[NSString stringWithFormat:@"Spotify reports this copy as enabled for offline listening. Free device slots: %@ of %@. Downloading and audio playback have not been tested.",result[@"sources"][@"licenses"][@"free_licenses"]?:@"?",result[@"sources"][@"licenses"][@"max_licenses"]?:@"?"]];
-    }];
-}
-- (void)confirmRelease:(NSDictionary *)plan devices:(NSArray *)devices {
-    NSMutableArray *names=[NSMutableArray array],*ids=[NSMutableArray array];
-    for(NSDictionary *device in devices){NSString *cache=device[@"cache_id"];[ids addObject:cache];[names addObject:[NSString stringWithFormat:@"%@ · %@",device[@"name"],[cache substringToIndex:MIN(cache.length,8)]]];}
-    NSString *message=[NSString stringWithFormat:@"Only use this to fix download problems, such as a device-limit error. Do not reset slots if downloads work normally.\n\nDisable offline registration for:\n%@\n\nCached tracks in these copies may become unavailable offline. The app will verify the device list and free-slot count after each command.",[names componentsJoinedByString:@"\n"]];
-    UIAlertController *confirm=[UIAlertController alertControllerWithTitle:@"Release offline registrations?" message:message preferredStyle:UIAlertControllerStyleAlert];
-    [confirm addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [confirm addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"Release %lu registration%@",(unsigned long)ids.count,ids.count==1?@"":@"s"] style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){
-        self.checkingCompatibility=YES;[self.tableView reloadData];
-        [SAPSettingsActions releaseOfflineDeviceSlots:plan[@"id"] cacheIDs:ids completion:^(NSDictionary *result,NSString *error){
-            self.checkingCompatibility=NO;[self refresh];
-            if(error){[self slotMessage:@"Release not fully confirmed" message:error];return;}
-            UIAlertController *done=[UIAlertController alertControllerWithTitle:@"Released slots verified" message:[NSString stringWithFormat:@"Free device slots: %@ of %@. Enabling offline listening on this copy will use one slot.",result[@"free_licenses"],result[@"max_licenses"]] preferredStyle:UIAlertControllerStyleAlert];
-            [done addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleCancel handler:nil]];
-            [done addAction:[UIAlertAction actionWithTitle:@"Enable this copy" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){[self enableCurrentOffline];}]];
-            [self presentViewController:done animated:YES completion:nil];
-        }];
-    }]];
-    [self presentViewController:confirm animated:YES completion:nil];
-}
-- (void)manageSlots:(UIView *)anchor {
-    self.checkingCompatibility=YES;[self.tableView reloadData];
-    [SAPSettingsActions previewOfflineDeviceSlots:^(NSDictionary *plan,NSString *error){
-        self.checkingCompatibility=NO;[self refresh];
-        if(error){[self slotMessage:@"No registration changed" message:error];return;}
-        NSArray *devices=plan[@"active_devices"];
-        UIAlertController *sheet=[UIAlertController alertControllerWithTitle:@"Occupied offline slots" message:[NSString stringWithFormat:@"Free slots: %@ of %@. Only release registrations to fix download problems. Old copies may lose offline access. Select a registration to review; nothing changes until you confirm.",plan[@"free_licenses"],plan[@"max_licenses"]] preferredStyle:UIAlertControllerStyleActionSheet];
-        for(NSDictionary *device in devices) {
-            NSString *cache=device[@"cache_id"];
-            NSString *name=[NSString stringWithFormat:@"%@ · %@",device[@"name"],[cache substringToIndex:MIN(cache.length,8)]];
-            [sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){[self confirmRelease:plan devices:@[device]];}]];
-        }
-        if(devices.count>1)[sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"Release all %lu registrations…",(unsigned long)devices.count] style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){[self confirmRelease:plan devices:devices];}]];
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-        sheet.popoverPresentationController.sourceView=anchor?:self.tableView;
-        sheet.popoverPresentationController.sourceRect=anchor?anchor.bounds:CGRectMake(0,0,1,1);
-        [self presentViewController:sheet animated:YES completion:nil];
-    }];
-}
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {
     [table deselectRowAtIndexPath:index animated:YES];
-    SAP_TRACE("ui","sprite_menu_selection",0,@{@"title":self.title?:@"",@"section":@(index.section),@"row":@(index.row)});
-    if(index.section==4) {
-        NSURL *url=[NSURL URLWithString:index.row==0?@"https://github.com/Glongq/EeveeSpotifyReincarnated":@"https://t.me/glongqforks"];
+    SAP_TRACE("ui","pixie_menu_selection",0,@{@"title":self.title?:@"",@"section":@(index.section),@"row":@(index.row)});
+    if(index.section==3) {
+        NSURL *url=[NSURL URLWithString:index.row==0?@"https://github.com/Glongq/Vitrine-Pixie":@"https://t.me/glongqforks"];
         [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];return;
     }
-    if(index.section==3 && index.row==0){BOOL before=SAPDiagnosticsEnabled();SAPDiagnosticsSetEnabled(!before);SAPJournalNoteAction(@"diagnostics_changed",@{@"before":@(before),@"after":@(SAPDiagnosticsEnabled())});[self refresh];return;}
+    if(index.section==2 && index.row==0){BOOL before=SAPDiagnosticsEnabled();SAPDiagnosticsSetEnabled(!before);SAPJournalNoteAction(@"diagnostics_changed",@{@"before":@(before),@"after":@(SAPDiagnosticsEnabled())});[self refresh];return;}
+    if(index.section==2 && index.row==2){[SAPSettingsActions perform:SAPSettingsResetJournal];return;}
     if(index.section==1) {
         if(self.checkingCompatibility)return;
-        if(index.row==2){[self manageSlots:[table cellForRowAtIndexPath:index]];return;}
-        if(index.row==3){[self enableCurrentOffline];return;}
+        if(index.row==2){[self.navigationController pushViewController:[SAPOfflineDevicesSettings new] animated:YES];return;}
         if(index.row==1) {
             self.checkingCompatibility=YES;[self.tableView reloadData];
             [SAPSettingsActions refreshDownloadCompatibility:^(NSDictionary *result){
@@ -377,8 +536,8 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
         [choice addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         [self presentViewController:choice animated:YES completion:nil];return;
     }
-    if(index.section==2 || (index.section==3 && index.row==1)) {
-        SAPDetailsSettings *page=[SAPDetailsSettings new];page.journal=index.section==2;
+    if(index.section==2 && index.row==1) {
+        SAPDetailsSettings *page=[SAPDetailsSettings new];
         [self.navigationController pushViewController:page animated:YES];return;
     }
     SAPSettingsAction action;
@@ -505,21 +664,49 @@ static void SAPAttachSettings(UIViewController *host) {
 }
 static void SAPSettingsLoaded(id self,SEL selector) {originalSettingsLoad(self,selector);SAPAttachSettings(self);}
 static void SAPSettingsLayout(id self,SEL selector) {originalSettingsLayout(self,selector);SAPAttachSettings(self);}
+static id SAPVitrinePageInit(id self,SEL selector,NSString *title,NSString *intro,NSArray *sections,NSString *footer) {
+    if([title isEqualToString:@"Vitrine"]) {
+        id (*pageRow)(NSString *,UIViewController *(^)(void))=dlsym(RTLD_DEFAULT,"SGPageRow");
+        id (*actionRow)(NSString *,NSString *,void (^)(void))=dlsym(RTLD_DEFAULT,"SGActionRow");
+        id (*withTile)(id,NSString *,UIColor *)=dlsym(RTLD_DEFAULT,"SGWithTile");
+        id (*section)(NSString *,NSArray *)=dlsym(RTLD_DEFAULT,"SGSection");
+        if(pageRow && actionRow && withTile && section) {
+            id row=pageRow(SAPL(@"Менеджер загрузок Pixie",@"Pixie Download Manager"),^UIViewController *{return [SAPDownloadsSettings new];});
+            row=withTile(row,@"arrow.down.circle.fill",UIColor.systemGreenColor);
+            id log=actionRow(@"Send log",@"Report, actions, download history and Vitrine diagnostics",^{[SAPSettingsActions perform:SAPSettingsSendLog];});
+            log=withTile(log,@"square.and.arrow.up",UIColor.systemBlueColor);
+            id group=section(nil,@[row,log]);
+            if(group){sections=[sections arrayByAddingObject:group];SAP_TRACE("ui","pixie_rows_added_to_vitrine",0,@{@"added_rows":@2,@"root_title":title});}
+        }else {
+            settingsInstallStatus=@"vitrine_row_factories_unavailable";
+        }
+    }
+    return originalVitrinePageInit(self,selector,title,intro,sections,footer);
+}
 void SAPInstallDownloadSettings(void) {
-    static dispatch_once_t once;dispatch_once(&once,^{
+    if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{SAPInstallDownloadSettings();});return;}
+    if(settingsInstalled)return;
+    Class vitrine=NSClassFromString(@"SGModPage");
+    SEL init=NSSelectorFromString(@"initWithTitle:intro:sections:footer:");
+    Method method=vitrine?class_getInstanceMethod(vitrine,init):NULL;
+    if(method&&method_getNumberOfArguments(method)==6) {
+        originalVitrinePageInit=(void *)method_getImplementation(method);
+        class_replaceMethod(vitrine,init,(IMP)SAPVitrinePageInit,method_getTypeEncoding(method));
+        settingsInstalled=YES;settingsInstallStatus=@"vitrine_page_hook_installed";return;
+    }
         #ifdef SAP_UI_FIXTURE
         Class cls=NSClassFromString(@"SAPFixtureEeveeSettingsViewController");
 #else
         Class cls=NSClassFromString(@"EeveeSpotify.EeveeSettingsViewController");
 #endif
         if(!cls)cls=NSClassFromString(@"_TtC12EeveeSpotify27EeveeSettingsViewController");
-        if(!cls)return;
+        if(!cls){settingsInstallStatus=vitrine?@"vitrine_page_signature_unavailable":@"settings_host_not_loaded";return;}
         SEL load=@selector(viewDidLoad),layout=@selector(viewDidLayoutSubviews);
         Method lm=class_getInstanceMethod(cls,load),dm=class_getInstanceMethod(cls,layout);
-        if(!lm || !dm || method_getNumberOfArguments(lm)!=2 || method_getNumberOfArguments(dm)!=2)return;
+        if(!lm || !dm || method_getNumberOfArguments(lm)!=2 || method_getNumberOfArguments(dm)!=2){settingsInstallStatus=@"settings_host_signature_mismatch";return;}
         originalSettingsLoad=(void *)method_getImplementation(lm);originalSettingsLayout=(void *)method_getImplementation(dm);
         // Add overrides only to Eevee's existing controller; inherited UIKit methods are not changed.
         class_replaceMethod(cls,load,(IMP)SAPSettingsLoaded,method_getTypeEncoding(lm));
         class_replaceMethod(cls,layout,(IMP)SAPSettingsLayout,method_getTypeEncoding(dm));
-    });
+        settingsInstalled=YES;settingsInstallStatus=@"settings_host_hook_installed";
 }

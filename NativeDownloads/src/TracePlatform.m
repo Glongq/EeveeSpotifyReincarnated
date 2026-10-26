@@ -10,6 +10,7 @@
 #import <mach/mach.h>
 #import <CommonCrypto/CommonDigest.h>
 #include <stdatomic.h>
+#import "BuildIdentity.h"
 #include <sys/sysctl.h>
 
 static NSMutableArray *observers;
@@ -22,13 +23,13 @@ static NSDictionary *route(void) {
 }
 static NSString *hex(const uint8_t *bytes,NSUInteger count) {NSMutableString *s=[NSMutableString stringWithCapacity:count*2];for(NSUInteger i=0;i<count;i++)[s appendFormat:@"%02x",bytes[i]];return s;}
 static NSArray *criticalSamples(uintptr_t base,NSString *uuid) {
-    if(![uuid isEqual:@"f51dbd933b8f3a12943196c606e3afc2"])return @[];
+    if(![uuid isEqual:@"fbce22c17e1b3e0d9be866ff9291943e"])return @[];
     static const struct {const char *name;uintptr_t offset;size_t length;} points[]={
-        {"key_request_call_site",0x3a6565c,16},{"key_request_observer",0x23700,239},
-        {"key_success_entry",0x6adce10,16},{"key_success_observer",0x23900,251},
-        {"key_failure_entry",0x92f08c,16},{"key_failure_observer",0x23b00,251},
-        {"quota_setter_entry",0x1f94658,16},{"quota_guard",0x23f00,48},
-        {"native_key_provider_entry",0x8fa7878,16}
+        {"key_request_call_site",0x3594f60,16},{"key_request_observer",0x23700,239},
+        {"key_success_entry",0x6231e70,16},{"key_success_observer",0x23900,251},
+        {"key_failure_entry",0x893730,16},{"key_failure_observer",0x23b00,251},
+        {"quota_setter_entry",0x1d1debc,16},{"quota_guard",0x23f00,52},
+        {"native_key_provider_entry",0x83de7b0,16}
     };
     NSMutableArray *samples=[NSMutableArray array];
     for(unsigned i=0;i<sizeof(points)/sizeof(points[0]);i++) {
@@ -70,6 +71,7 @@ void SAPTraceCaptureRuntimeManifest(const char *reason) {
         [images addObject:image];
     }
     SAP_TRACE("runtime","manifest",0,@{@"reason":reason?@(reason):@"unknown",@"images":images,@"hooks":SAPTraceHookManifest(),@"key_mode":SAPKeyRequestModeReport(),
+        @"pixie_revision":@SAP_BUILD_REVISION,@"vitrine_source_commit":@SAP_VITRINE_SOURCE_COMMIT,
         @"native_key_boundaries":SAPNativeKeyTraceReport(),
         @"os_version":NSProcessInfo.processInfo.operatingSystemVersionString,@"foreground_state":@(UIApplication.sharedApplication.applicationState),
         @"low_power_mode":@(NSProcessInfo.processInfo.lowPowerModeEnabled),@"route":route(),@"pre_library_calls_observed":@NO});

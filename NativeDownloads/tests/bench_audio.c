@@ -1,7 +1,6 @@
 #include <time.h>
 #include <stdlib.h>
 #include "AudioProbeBackend.h"
-#include "CaptureRing.h"
 #include "Diagnostics.h"
 
 #include <assert.h>

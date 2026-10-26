@@ -313,7 +313,7 @@ int main(void) {
         SAPJournalDrainForTesting();assert(reads.count==oldReads && sent.count==oldSent);
         NSDictionary *quietReport=SAPJournalReport();assert(![quietReport[@"diagnostics_enabled"] boolValue]);
         NSUInteger oldActions=[quietReport[@"action_events"]count];
-        NSString *actionPath=[NSTemporaryDirectory()stringByAppendingPathComponent:@"SpriteActions.log"];
+        NSString *actionPath=[NSTemporaryDirectory()stringByAppendingPathComponent:@"PixieActions.log"];
         NSData *beforeActions=[NSData dataWithContentsOfFile:actionPath];
         for(unsigned i=0;i<100;i++)SAPJournalNoteAction(@"must_not_log_while_off",@{@"i":@(i)});
         SAPJournalDrainForTesting();

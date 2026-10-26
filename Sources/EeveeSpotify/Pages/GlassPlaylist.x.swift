@@ -228,6 +228,7 @@ extension GlassPlaylist {
         row.add = add
         row.share = share
         row.followControl = follow
+        row.bindArtistDownloads(header: host.accessibilityIdentifier == "creator-page" ? controls : nil)
         row.anchor = add ?? shuffle
         row.playHolder = holder(of: play)
         row.controlsRow = wideAncestor(of: shuffle, below: host)

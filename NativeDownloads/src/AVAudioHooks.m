@@ -46,8 +46,9 @@ done:
 
 static void enqueue(id receiver, SEL command, CMSampleBufferRef sample) {
     if (enqueueDepth++) {
-        ((void (*)(id, SEL, CMSampleBufferRef))enqueueOriginal)(receiver, command, sample);
-        --enqueueDepth; return;
+        @try { ((void (*)(id, SEL, CMSampleBufferRef))enqueueOriginal)(receiver, command, sample); }
+        @finally { --enqueueDepth; }
+        return;
     }
     CMSampleBufferRef copy = NULL;
     @try {

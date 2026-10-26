@@ -44,10 +44,7 @@ int main(void) {
     assert(AudioUnitInitialize(converter) == noErr && AudioUnitInitialize(output) == noErr);
     void (*snapshotFn)(SAPSnapshot *) = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeReadSnapshot");
     bool (*muteFn)(double) = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeMuteForSeconds");
-    bool (*captureFn)(SAPCaptureFormat *) = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeBeginCapture");
-    void (*endFn)(void) = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeEndCapture");
-    size_t (*readFn)(void *, size_t) = dlsym(RTLD_DEFAULT, "SpotifyAudioProbeReadCapture");
-    assert(snapshotFn && muteFn && captureFn && endFn && readFn);
+    assert(snapshotFn && muteFn);
     // Keep all five redirected symbols in this executable.
     AudioStreamBasicDescription query; UInt32 size = sizeof(query);
     assert(AudioUnitGetProperty(converter, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &query, &size) == noErr);
@@ -67,13 +64,7 @@ int main(void) {
     assert(AudioUnitRender(output, &flags, &time, 0, 128, &data) == noErr);
     for (unsigned i = 0; i < 256; ++i) assert(samples[i] == 0);
     assert(muteFn(0));
-    SAPCaptureFormat capture; assert(captureFn(&capture));
-    time.mSampleTime += 128; flags = 0;
-    assert(AudioUnitRender(output, &flags, &time, 0, 128, &data) == noErr);
-    endFn();
-    float recorded[256]; assert(readFn(recorded, sizeof(recorded)) == sizeof(recorded));
-    for (unsigned i = 0; i < 256; ++i) assert(recorded[i] == 0.25f && samples[i] == 0.25f);
     AudioUnitUninitialize(output); AudioUnitUninitialize(converter);
     assert(AudioComponentInstanceDispose(output) == noErr && AudioComponentInstanceDispose(converter) == noErr);
-    puts("PASS: real AUConverter -> GenericOutput graph, input int16 -> output float32; original audio, converter callback interception, mute at output and capture samples verified");
+    puts("PASS: real AUConverter -> GenericOutput graph, input int16 -> output float32; original audio, converter callback interception and mute at output verified");
 }

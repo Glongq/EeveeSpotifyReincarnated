@@ -49,18 +49,6 @@ SAP_EXPORT void SpotifyAudioProbeReadSnapshot(SAPSnapshot *snapshot);
 SAP_EXPORT bool SpotifyAudioProbeMuteForSeconds(double seconds);
 SAP_EXPORT void SpotifyAudioProbeInitialize(void);
 
-// Capture is one producer (selected output callback) and one consumer (writer).
-// The consumer receives interleaved Float32 PCM for a WAV format-3 file.
-typedef struct {
-    double sampleRate;
-    uint32_t channels;
-} SAPCaptureFormat;
-SAP_EXPORT bool SpotifyAudioProbeBeginCapture(SAPCaptureFormat *format);
-SAP_EXPORT size_t SpotifyAudioProbeReadCapture(void *destination, size_t capacity);
-SAP_EXPORT void SpotifyAudioProbeEndCapture(void);
-SAP_EXPORT uint64_t SpotifyAudioProbeDroppedCaptureFrames(void);
-SAP_EXPORT bool SpotifyAudioProbeCaptureFormatChanged(void);
-
 // Producer-side paths (AVFoundation scheduling, not the hardware render thread).
 void SAPProcessExternal(const void *identity, const char *path,
                         const AudioStreamBasicDescription *format,

@@ -1,4 +1,4 @@
-"""Guard native restriction updates in the exact supplied Spotify 9.1.88 binary.
+"""Guard native restriction updates in the exact supplied Spotify 9.1.90 binary.
 
 A small leaf trampoline in verified zero-filled __TEXT header padding clamps the
 six-argument setter's two nonnegative music limits before the original setter.
@@ -7,10 +7,10 @@ No runtime code writes, extra imports, polling, key material or episode changes.
 import struct
 
 PREFERRED = 0x100000000
-SETTER = 0x101f94658
+SETTER = 0x101d1debc
 CAVE = 0x100023f00
-ORIGINAL = bytes.fromhex('e6031eaa37f1f595fe0306aafd7b11a9')
-UUID = bytes.fromhex('f51dbd933b8f3a12943196c606e3afc2')
+ORIGINAL = bytes.fromhex('e6031eaa8f3ef495fe0306aafd7b11a9')
+UUID = bytes.fromhex('fbce22c17e1b3e0d9be866ff9291943e')
 MINIMUM_TRACKS = 1_000_000
 # The setter accepts signed int32 seconds even though its stored field is int64.
 MINIMUM_MUSIC_DURATION_SECONDS = (1 << 31) - 1

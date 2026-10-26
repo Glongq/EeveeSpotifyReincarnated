@@ -20,7 +20,7 @@ BOOL SAPSupportLogWrite(NSURL *url,NSDictionary *diagnostics,NSDictionary *journ
                         NSString *summary,NSArray *files,NSError **error) {
     NSMutableDictionary *report=[diagnostics mutableCopy]?:[NSMutableDictionary dictionary];
     NSDictionary *trace=report[@"diagnostic_trace"]?:@{@"status":@"not_included"};[report removeObjectForKey:@"diagnostic_trace"];
-    NSDictionary *value=@{@"log_schema":@"Sprite support log 3",
+    NSDictionary *value=@{@"log_schema":@"Pixie support log 3",
         @"generated_at":[[NSISO8601DateFormatter new]stringFromDate:NSDate.date],
         @"snapshot_note":@"Sections have their own observation times. File contents are captured separately; this is not an atomic snapshot of Spotify or its server.",
         @"sections":@{@"diagnostics":report,@"trace":trace,@"download_journal":journal?:@{},
