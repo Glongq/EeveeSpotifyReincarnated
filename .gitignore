@@ -49,3 +49,8 @@ NativeDownloads/outputs/
 *.dylib
 SpotifyAudioProbe*.json
 SpotifyAudioProbe*.txt
+
+# Isolated 9.1.92 port artifacts
+/outputs/
+/research/
+/.analysis-venv/

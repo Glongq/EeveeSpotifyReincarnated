@@ -1,8 +1,7 @@
 ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
-TARGET := iphone:clang:latest:16.1
-else
-TARGET := iphone:clang:latest:14.0
+$(error This project supports the 9.1.92 companion IPA target only; historical DEB tooling is in NativeDownloads/legacy)
 endif
+TARGET := iphone:clang:latest:14.0
 INSTALL_TARGET_PROCESSES = Spotify
 ARCHS = arm64
 
@@ -25,15 +24,6 @@ EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
 EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
 
-# Native builds share readiness checks. IPA packaging applies executable patches
-# before signing; jailbreak loading uses the guarded runtime adapter.
-ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
-EeveeSpotify_FILES += $(wildcard NativeDownloads/src/*.m NativeDownloads/src/*.c) NativeDownloads/jailbreak/Runtime.m modules/fishhook/fishhook.c
-EeveeSpotify_CFLAGS += -INativeDownloads/src -Imodules/fishhook -DSAP_ENABLE_WAV_CAPTURE=0
-EeveeSpotify_SWIFTFLAGS += -D NATIVE_DOWNLOADS_JAILBREAK
-EeveeSpotify_FRAMEWORKS += AudioToolbox AVFAudio AVFoundation CoreMedia CoreGraphics Network
-endif
-
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
 ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
@@ -49,19 +39,6 @@ endif
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
-before-package:: $(THEOS_STAGING_DIR)/DEBIAN/control
-	sed -i.bak -e 's/^Name:.*/Name: EeveeSpotify + Pixie Download Manager/' -e 's/^Maintainer:.*/Maintainer: Glongq/' -e 's/^Description:.*/Description: Unofficial EeveeSpotify fork with English-only Pixie Download Manager v1. Codex-assisted build./' $(THEOS_STAGING_DIR)/DEBIAN/control
-	rm -f $(THEOS_STAGING_DIR)/DEBIAN/control.bak
-	mkdir -p $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify
-	cp LICENSE $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify/COPYING
-	cp NativeDownloads/jailbreak/licenses/*.txt $(THEOS_STAGING_DIR)/usr/share/doc/com.eevee.spotify/
-	# Theos optimizes plists after before-package. Normalize before signing so
-	# the framework's sealed Info.plist is not changed after its signature.
-	plutil -convert binary1 $(THEOS_STAGING_DIR)/Library/Frameworks/EeveeSwiftProtobuf.framework/Info.plist
-	codesign --force --sign - --timestamp=none $(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/EeveeSpotify.dylib
-	codesign --force --sign - --timestamp=none $(THEOS_STAGING_DIR)/Library/Frameworks/EeveeSwiftProtobuf.framework
-endif
 
 internal-stage::
 	# Bundle EeveeSwiftProtobuf.framework into the package. Renamed from

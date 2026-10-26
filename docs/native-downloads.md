@@ -1,5 +1,9 @@
 # Native downloads: architecture and verification
 
+> Historical 9.1.88/v4–v7 notes. For the current 9.1.92 source layout and build
+> instructions, use the [Pixie integration map](../NativeDownloads/docs/INTEGRATION-MAP.md).
+> Paths and device-verification claims below describe the old revision only.
+
 ## Scope
 
 This fork adds the experimental native-download implementation from

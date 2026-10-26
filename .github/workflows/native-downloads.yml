@@ -1,23 +1,19 @@
-name: Pixie Download Manager — Validate / Build IPA
+name: Pixie 1.3 — Spotify 9.1.92
 
 on:
   push:
-    paths:
-      - 'NativeDownloads/**'
-      - '.github/workflows/native-downloads.yml'
+    paths: ['NativeDownloads/**', 'Sources/**', 'Makefile', '.github/workflows/native-downloads.yml']
   pull_request:
-    paths:
-      - 'NativeDownloads/**'
-      - '.github/workflows/native-downloads.yml'
+    paths: ['NativeDownloads/**', 'Sources/**', 'Makefile', '.github/workflows/native-downloads.yml']
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: 'Optional HTTPS URL to your unmodified EeveeSpotify 7.0.0 / Spotify 9.1.90 IPA; leave empty for validation only'
+        description: 'Optional HTTPS URL to the compatible Spotify 9.1.92 / EeveeSpotify 7.0.0 IPA'
         required: false
         default: ''
         type: string
       eevee_dylib_url:
-        description: 'HTTPS URL of EeveeSpotify.dylib compiled from current sources; required when ipa_url is an original 7.0.0 base'
+        description: 'HTTPS URL of EeveeSpotify.dylib rebuilt from these sources; required for packaging'
         required: false
         default: ''
         type: string
@@ -27,53 +23,44 @@ permissions:
 
 jobs:
   validate:
-    # NativeTracePatch regeneration assembles ARM64 with the Xcode SDK.
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate source provenance and guarded patchers
-        run: python3 NativeDownloads/tools/validate_eevee_9190.py
+      - run: python3 NativeDownloads/tools/validate_eevee_9192.py
+      - run: python3 NativeDownloads/tools/test.py --build-dir outputs/ci-host-tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pixie-host-test-results
+          path: outputs/ci-host-tests
+          retention-days: 7
 
-  build-ipa:
+  package:
     if: github.event_name == 'workflow_dispatch' && inputs.ipa_url != ''
     needs: validate
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Download user-supplied base IPA
+      - name: Fetch supplied artifacts and package
         env:
           SOURCE_IPA_URL: ${{ inputs.ipa_url }}
-        run: |
-          case "$SOURCE_IPA_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
-          curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$SOURCE_IPA_URL" --output "$RUNNER_TEMP/source.ipa"
-      - name: Build guarded native-download overlay
-        env:
           EEVEE_DYLIB_URL: ${{ inputs.eevee_dylib_url }}
         run: |
-          args=()
-          if [ -n "$EEVEE_DYLIB_URL" ]; then
-            case "$EEVEE_DYLIB_URL" in https://*) ;; *) echo 'An HTTPS URL is required'; exit 1 ;; esac
-            curl --proto '=https' --proto-redir '=https' --location --fail --silent --show-error "$EEVEE_DYLIB_URL" --output "$RUNNER_TEMP/EeveeSpotify.dylib"
-            args+=(--eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib")
-          else
-            echo 'Supply an Eevee library rebuilt with the current Pixie artist controls.'
-            exit 1
-          fi
-          mkdir -p NativeDownloads/outputs/eevee-pixie-v1.3
-          python3 NativeDownloads/tools/build_eevee_9190.py "$RUNNER_TEMP/source.ipa" "${args[@]}" \
-            --output NativeDownloads/outputs/eevee-pixie-v1.3/Spotify-9.1.90-EeveeSpotify-Pixie-v1.3.ipa \
-            > NativeDownloads/outputs/eevee-pixie-v1.3/build-report.json
+          case "$SOURCE_IPA_URL" in https://*) ;; *) exit 1 ;; esac
+          case "$EEVEE_DYLIB_URL" in https://*) ;; *) echo 'A current Eevee library is required'; exit 1 ;; esac
+          curl --proto '=https' --proto-redir '=https' --location --fail "$SOURCE_IPA_URL" --output "$RUNNER_TEMP/source.ipa"
+          curl --proto '=https' --proto-redir '=https' --location --fail "$EEVEE_DYLIB_URL" --output "$RUNNER_TEMP/EeveeSpotify.dylib"
+          mkdir -p outputs/ci-package
+          python3 NativeDownloads/tools/build_eevee_9192.py "$RUNNER_TEMP/source.ipa" --eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib" --output outputs/ci-package/Spotify-9.1.92-EeveeSpotify-Pixie-v1.3.ipa > outputs/ci-package/build-report.json
       - uses: actions/upload-artifact@v4
         with:
-          name: eevee-pixie-v1.3-native-downloads
+          name: eevee-9192-pixie-1.3
+          path: outputs/ci-package
           if-no-files-found: error
           retention-days: 7
-          path: |
-            NativeDownloads/outputs/eevee-pixie-v1.3/Spotify-9.1.90-EeveeSpotify-Pixie-v1.3.ipa
-            NativeDownloads/outputs/eevee-pixie-v1.3/build-report.json

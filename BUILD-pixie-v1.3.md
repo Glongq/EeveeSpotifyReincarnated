@@ -1,25 +1,39 @@
-# Build EeveeSpotify 7.0.0 / Spotify 9.1.90 + Pixie Manager v1.3
+# EeveeSpotify 7.0.0 / Spotify 9.1.92 + Pixie Manager 1.3
 
-Requires macOS, full Xcode, Python 3, Theos with Orion and EeveeSwiftProtobuf, and GNU make. Use an iOS 26+ SDK for the Liquid Glass controls. Supply your own compatible, decrypted EeveeSpotify 7.0.0 / Spotify 9.1.90 IPA.
+Requires Apple Silicon macOS, full Xcode with an iOS 26+ SDK for Eevee's glass controls, Python 3, GNU make, and Theos with Orion/EeveeSwiftProtobuf. Supply the compatible decrypted Spotify 9.1.92 / EeveeSpotify 7.0.0 IPA. Target ARM64 UUID: `2acd33ee445b326d8b75b3e32403790a`.
 
-From the repository root, with `THEOS` set:
+## Build
+
+From this project directory:
 
 ```sh
-python3 NativeDownloads/tools/validate_eevee_9190.py
-THEOS_PACKAGE_SCHEME=rootless gmake -j4 all FINALPACKAGE=1
-cp .theos/obj/EeveeSpotify.dylib /tmp/EeveeSpotify-Pixie.dylib
-codesign --force --sign - --timestamp=none /tmp/EeveeSpotify-Pixie.dylib
-python3 NativeDownloads/tools/build_eevee_9190.py /path/to/EeveeSpotify-7.0.0-9.1.90.ipa \
-  --eevee-dylib /tmp/EeveeSpotify-Pixie.dylib \
-  --output NativeDownloads/outputs/new-build/Spotify-9.1.90-EeveeSpotify-Pixie-v1.3.ipa
+python3 NativeDownloads/tools/validate_eevee_9192.py
+python3 NativeDownloads/tools/test.py
+python3 NativeDownloads/tools/build.py /path/to/input.ipa --theos /path/to/theos
 ```
 
-Choose a fresh output directory for each build. The builder preserves the input resources and extensions, updates the guarded Spotify executable and Eevee library, and adds the Pixie companion. It signs the changed binaries ad hoc for packaging; installation requires your signing tool. No certificate or account credentials are supplied by this repository.
+The last command rebuilds the Eevee UI library, signs that library ad hoc, builds Pixie from the target manifest and creates the IPA in a fresh root `outputs/build-<timestamp>/`. Logs stay alongside it. It handles the space in this project directory through a temporary Theos path alias. It never installs or launches on a phone.
 
-Current IPA builds keep the Eevee UI and Pixie companion separate. Do not enable `NATIVE_DOWNLOADS_JAILBREAK=1` for this command or inject an old unified Pixie v1 library alongside it.
+The input resources/extensions are retained; the guarded Spotify executable and Eevee library change, and the companion is added. Installation requires the user's signing tool. No certificate or account credentials are bundled.
 
-The source snapshot includes artist identity and layout integration, release/playlist queues, native completion recovery, diagnostics and offline-device management. Eevee's existing `SpriteAuthentication.headersWithCompletion:` supplies authenticated headers. No Vitrine runtime is required.
+The lower-level `tools/build_eevee_9192.py --eevee-dylib ...` packages an already rebuilt Eevee library; CI uses it when both artifacts are supplied. Never supply an old unified native core alongside the companion.
 
-Local device-management tests cover source agreement, reviewed device/cache identities, one-shot commands, failed/malformed responses, readback and the real Swift Eevee header-provider bridge. Their HTTP requests are intercepted by `NSURLProtocol`; they do not authenticate to Spotify or change real devices.
+## Target and generated files
 
-Old `build.py`, `prepare_ipa.py`, jailbreak tooling and v1 provenance describe the previous 9.1.88 release. Use tag `pixie-v1` to reproduce those artifacts. The current source publication does not rebuild or validate jailbreak packages.
+`NativeDownloads/targets/spotify-9.1.92.json` is the current identity and source manifest. After intentionally reviewing a target/source change:
+
+```sh
+python3 NativeDownloads/tools/generate_target.py
+python3 NativeDownloads/tools/source_provenance.py
+python3 NativeDownloads/tools/validate_eevee_9192.py
+```
+
+Changing the target JSON does not discover or validate new offsets. Exact original instruction guards and the independent supplied-binary verifier remain required. Current refactoring keeps the previous patch output unchanged.
+
+For supplied input/output IPA verification:
+
+```sh
+python3 NativeDownloads/tools/verify_eevee_9192.py /path/to/input.ipa --output /path/to/output.ipa --report /path/to/verification.json
+```
+
+CI validates sources and host fixtures. Manual packaging uploads an Actions artifact without publishing a release. Old 9.1.88/9.1.90 and jailbreak routes remain in Git history; this 9.1.92 tree does not claim a tested DEB target.
