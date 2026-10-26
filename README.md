@@ -19,7 +19,7 @@
 
 ## Pixie
 
-<p align="center">
+<p align="left">
   <img src="Images/pixie-manager.gif" width="150" alt="Pixie Manager downloading artist releases">
 </p>
 
