@@ -20,7 +20,7 @@
 ## Pixie
 
 <p align="center">
-  <img src="Images/pixie-manager.gif" width="300" alt="Pixie Manager downloading artist releases">
+  <img src="Images/pixie-manager.gif" width="150" alt="Pixie Manager downloading artist releases">
 </p>
 
 English-only settings in **EeveeSpotify → Pixie Download Manager**.
