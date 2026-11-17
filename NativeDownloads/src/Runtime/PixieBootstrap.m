@@ -34,7 +34,11 @@
 static atomic_int startupState;
 __attribute__((visibility("default"))) NSDictionary *SAPStartupReport(void) {
     NSString *states[] = {@"not_started",@"initializing",@"complete",@"native_setup_unavailable"};
-    return @{@"version":@SAP_BUILD_LABEL,@"state":states[atomic_load(&startupState)]};
+    NSMutableDictionary *report=[@{@"version":@SAP_BUILD_LABEL,@"state":states[atomic_load(&startupState)]} mutableCopy];
+#if SAP_JAILBREAK
+    report[@"jailbreak_bootstrap"]=SAPJailbreakSupportReport();
+#endif
+    return report;
 }
 
 // Install the host backend once, preserving the original initialization order.
@@ -62,6 +66,9 @@ __attribute__((constructor)) static void SAPLoad(void) {
         SAPInstallTrackDownloader();
         SAPSetOfflineKeySuccessObserver(SAPExportObserveOfflineSuccess);
         }
+#if SAP_JAILBREAK
+        SAP_TRACE("startup","jailbreak_bootstrap",0,SAPJailbreakSupportReport());
+#endif
         SAP_TRACE("startup","pixie_hooks_installed",0,@{@"offline_flags":SAPOfflineFlagsReport(),@"offline_config":SAPOfflineConfigReport(),@"native_offline":SAPNativeOfflineReport(),@"transport":SAPTrackDownloadReport(),@"hooks":SAPTraceHookManifest()});
         dispatch_async(dispatch_get_main_queue(), ^{ SAPInstallDownloadSettings();SAPInstallNativeShareHooks();SAPInstallArtistPageButton(); });
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){SAPInstallDownloadSettings();SAPInstallArtistPageButton();}];

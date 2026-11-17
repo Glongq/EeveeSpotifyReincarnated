@@ -1,6 +1,8 @@
 TARGET := iphone:clang:latest:14.0
 INSTALL_TARGET_PROCESSES = Spotify
 ARCHS = arm64
+METAL ?= xcrun -sdk iphoneos metal
+METALLIB ?= xcrun -sdk iphoneos metallib
 
 include $(THEOS)/makefiles/common.mk
 
@@ -20,6 +22,17 @@ EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
 EeveeSpotify_SWIFTFLAGS = -ISources/EeveeSpotifyC/include -Osize
 EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
 EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
+
+# Opt-in jailbreak packaging. IPA builds retain their existing static patch path.
+ifeq ($(PIXIE_JAILBREAK),1)
+PIXIE_PLAN_DIR ?= $(THEOS_PROJECT_DIR)/NativeDownloads/jailbreak/plans/spotify-9.2.0
+PIXIE_BUILD_DIR := $(THEOS_PROJECT_DIR)/.theos/pixie-$(THEOS_PACKAGE_SCHEME)
+PIXIE_DYLIB := $(PIXIE_BUILD_DIR)/SpotifyAudioProbe.dylib
+EeveeSpotify_LDFLAGS += -Wl,-needed_library,$(PIXIE_DYLIB)
+before-all::
+	python3 NativeDownloads/tools/build_jailbreak.py $(if $(strip $(PIXIE_SOURCE_IPA)),--ipa "$(PIXIE_SOURCE_IPA)",--plan-dir "$(PIXIE_PLAN_DIR)") \
+		--theos "$(THEOS)" --scheme "$(THEOS_PACKAGE_SCHEME)" --output-dir "$(PIXIE_BUILD_DIR)"
+endif
 
 # RootHide's compatibility implementation of libroot resolves jailbreak paths
 # through libroothide at runtime. Rootless builds continue to use libroot.
@@ -51,10 +64,16 @@ internal-stage::
 	# .metallib or that the staged path is correct; if `make package`
 	# fails at this step or the shader doesn't load at runtime, check
 	# this block first).
-	xcrun -sdk iphoneos metal -c Sources/EeveeSpotify/Karaoke/KaraokeBackgroundShader.metal \
+	$(METAL) -c Sources/EeveeSpotify/Karaoke/KaraokeBackgroundShader.metal \
 		-o $(THEOS_OBJ_DIR)/KaraokeBackgroundShader.air
-	xcrun -sdk iphoneos metallib $(THEOS_OBJ_DIR)/KaraokeBackgroundShader.air \
+	$(METALLIB) $(THEOS_OBJ_DIR)/KaraokeBackgroundShader.air \
 		-o $(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/KaraokeBackgroundShader.metallib
+
+ifeq ($(PIXIE_JAILBREAK),1)
+internal-stage::
+	cp "$(PIXIE_DYLIB)" "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/SpotifyAudioProbe.dylib"
+	python3 NativeDownloads/tools/build_jailbreak.py --stage-eevee "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/EeveeSpotify.dylib" --stage-root "$(THEOS_STAGING_DIR)"
+endif
 
 # Build EeveeSwiftProtobuf.framework from apple/swift-protobuf source. Run
 # this once before `make package`. Re-run if SWIFTPROTOBUF_VERSION changes

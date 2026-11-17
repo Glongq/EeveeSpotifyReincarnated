@@ -13,7 +13,8 @@ def sdk_path():
     return subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
 
 
-def build_companion(library, workdir):
+def build_companion(library, workdir, *, extra_sources=(), extra_flags=(), link_flags=(),
+                    install_name="@rpath/SpotifyAudioProbe.dylib"):
     """Compile, ad-hoc sign and validate the companion at `library`; return its bytes."""
     library, workdir, sdk = Path(library), Path(workdir), sdk_path()
     swift = build_native_share(workdir / "NativeShareBridge.o", sdk)
@@ -22,11 +23,13 @@ def build_companion(library, workdir):
                "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-nullability-completeness",
                "-Werror=implicit-function-declaration", "-DSAP_RESEARCH_DUMP=0", "-DSAP_ENABLE_WAV_CAPTURE=0"]
     command += ["-I" + str(path) for path in include_directories()]
+    command += list(extra_flags)
     command += [str(path) for path in companion_sources()]
+    command += [str(path) for path in extra_sources]
     command += ["-lm", "-lsqlite3", "-lz", *swift["link_args"]]
     for framework in FRAMEWORKS:
         command += ["-framework", framework]
-    command += ["-Wl,-install_name,@rpath/SpotifyAudioProbe.dylib", "-o", str(library)]
+    command += [*link_flags, "-Wl,-install_name," + install_name, "-o", str(library)]
     subprocess.run(command, check=True)
     subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(library)], check=True)
     subprocess.run(["codesign", "--verify", "--strict", str(library)], check=True)

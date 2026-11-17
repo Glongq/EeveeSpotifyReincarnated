@@ -38,7 +38,10 @@ NSString *EeveePixieStartupSummary(void) {
         NSDictionary *status=report();
         NSString *state=status[@"state"]?:@"unknown",*version=status[@"version"]?:@"unknown";
         if(!factory)return [NSString stringWithFormat:@"[ERROR] Pixie %@: settings entry point missing",version];
-        return [NSString stringWithFormat:@"%@Pixie %@: bootstrap=%@",[state isEqual:@"complete"]?@"":@"[ERROR] ",version,state];
+        NSDictionary *jailbreak=status[@"jailbreak_bootstrap"];
+        NSString *detail=jailbreak ? [NSString stringWithFormat:@" reason=%@ build=%@ uuid=%@",jailbreak[@"reason"]?:@"unknown",
+            jailbreak[@"detected"][@"build"]?:@"unknown",jailbreak[@"loaded_executable"][@"uuid"]?:@"unavailable"] : @"";
+        return [NSString stringWithFormat:@"%@Pixie %@: bootstrap=%@%@",[state isEqual:@"complete"]?@"":@"[ERROR] ",version,state,detail];
     }
     if(factory)return @"Pixie loaded: bootstrap status unavailable (older companion)";
     for(uint32_t i=0;i<_dyld_image_count();i++) {

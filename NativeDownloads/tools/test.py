@@ -36,6 +36,9 @@ class Fixture:
 # basename resolution allows the production tree to be reorganized without
 # copying it into the tests or relying on directory-wide source globs.
 FIXTURES = (
+    Fixture("jailbreak_identity", "runtime", ("jailbreak_identity.m",)),
+    Fixture("jailbreak_patches", "runtime", ("jailbreak_patches.c",)),
+    Fixture("jailbreak_import_memory", "runtime", ("jailbreak_import_memory.c",)),
     Fixture("native_cache_namespace", "export", ("native_cache_namespace.m",)),
     Fixture("page_contract", "library", ("PixiePageController.m", "page_contract.m"), scenarios=tuple((s,) for s in ("swift", "legacy", "both", "late", "unsupported", "lookalike"))),
     Fixture("progress_animation", "library", ("progress_animation.m",), frameworks=("Foundation", "QuartzCore")),

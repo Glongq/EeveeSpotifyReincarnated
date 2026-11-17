@@ -23,6 +23,7 @@
 #import "ProcessScope.h"
 #if SAP_JAILBREAK
 #import "JailbreakSupport.h"
+#import "TargetProfile.h"
 #endif
 
 static NSURL *SAPDocuments(void) {
@@ -155,7 +156,7 @@ static void SAPShare(NSURL *url) {
 #if SAP_JAILBREAK
     NSDictionary *startup=SAPJailbreakSupportReport();
     if((action==SAPSettingsDownload||action==SAPSettingsDownloadAlbum)&&![startup[@"native_patches_ready"]boolValue]) {
-        SAPMessage([NSString stringWithFormat:@"Pixie downloads could not initialize (%@). This DEB requires the verified Spotify 9.1.92 executable. Detected version: %@.",startup[@"reason"],startup[@"detected_spotify_version"]]);return;
+        SAPMessage([NSString stringWithFormat:@"Pixie downloads could not initialize (%@). This DEB requires the verified Spotify %s executable. Detected version: %@.",startup[@"reason"],SAP_SPOTIFY_VERSION,startup[@"detected_spotify_version"]]);return;
     }
 #endif
     switch(action) {
