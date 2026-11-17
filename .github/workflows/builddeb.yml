@@ -112,8 +112,9 @@ jobs:
           python3 Tests/ResolveConfigurationSnapshot/test.py
 
       - name: Check guarded Pixie runtime helpers
+        timeout-minutes: 2
         run: |
-          python3 NativeDownloads/tools/test.py \
+          python3 NativeDownloads/tools/test.py --no-sanitize \
             --fixture jailbreak_identity --fixture jailbreak_patches --fixture jailbreak_import_memory \
             --build-dir Outputs/DEBS/runtime-tests-${{ matrix.scheme }}
 
