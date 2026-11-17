@@ -33,7 +33,6 @@ jobs:
 
     env:
       THEOS: ${{ github.workspace }}/Outputs/BuildTools/theos-${{ matrix.scheme }}
-      SRC_DIR: ${{ runner.temp }}/swift-protobuf-${{ matrix.scheme }}
       THEOS_PACKAGE_SCHEME: ${{ matrix.scheme }}
 
     steps:
@@ -71,6 +70,8 @@ jobs:
           xcrun -sdk iphoneos --find metallib
 
       - name: Build EeveeSwiftProtobuf.framework
+        env:
+          SRC_DIR: ${{ runner.temp }}/swift-protobuf-${{ matrix.scheme }}
         run: make build-eeveeswiftprotobuf
 
       - name: Test ad and Premium banner filtering
