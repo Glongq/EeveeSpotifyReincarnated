@@ -24,13 +24,12 @@ jobs:
 
       - name: Download and verify the vanilla IPA from this repository's draft
         env:
-          GH_TOKEN: ${{ github.token }}
-          IPA_ASSET_ID: '770661525'
+          IPA_DOWNLOAD_URL: ${{ secrets.CI_LYRICS_IPA_INPUT_URL }}
           IPA_SHA256: 'eb4cd2ebaf092965931631fe7fb93fb0e648259c4553a14c063ac68c2b76c3fb'
         run: |
-          curl --fail --silent --show-error --location --retry 3 \
-            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/octet-stream' \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/assets/$IPA_ASSET_ID" \
+          test -n "$IPA_DOWNLOAD_URL"
+          curl --proto '=https' --proto-redir '=https' --fail --silent --show-error --location --retry 3 \
+            "$IPA_DOWNLOAD_URL" \
             -o "$GITHUB_WORKSPACE/spotify.ipa"
           printf '%s  %s\n' "$IPA_SHA256" "$GITHUB_WORKSPACE/spotify.ipa" | shasum -a 256 -c -
 
