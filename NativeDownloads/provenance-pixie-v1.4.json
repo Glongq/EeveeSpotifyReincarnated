@@ -1,8 +1,8 @@
 {
-  "release": "eevee-spotify-9.2.0-pixie-1.4",
-  "spotify_version": "9.2.0",
-  "spotify_build": "920002054",
-  "spotify_uuid": "b49e75781d8635d38bb57daf68fed8a8",
+  "release": "eevee-spotify-9.2.2-pixie-1.4",
+  "spotify_version": "9.2.2",
+  "spotify_build": "920202587",
+  "spotify_uuid": "bedf0071845d39bbb2d096f9a8095e66",
   "eevee_version": "7.5.0",
   "pixie_version": "1.4",
   "source_sha256_by_file": {

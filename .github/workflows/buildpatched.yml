@@ -149,7 +149,7 @@ jobs:
           ipapatch --input "$OUT_IPA" --inplace --noconfirm \
                    --dylib packages/zxPluginsInject.dylib
 
-      - name: Add Pixie download manager (Spotify 9.2.0 only)
+      - name: Add Pixie download manager (Spotify 9.2.2 only)
         if: ${{ inputs.ipa_url != '' }}
         run: |
           # The download manager lives in the SpotifyAudioProbe.dylib companion, which is only
@@ -157,8 +157,8 @@ jobs:
           # IPA has no companion and Eevee hides the "Download manager" settings row.
           SPOT_VERSION=$(unzip -p "$OUT_IPA" 'Payload/Spotify.app/Info.plist' \
               | plutil -extract CFBundleShortVersionString raw - 2>/dev/null || echo "unknown")
-          if [ "$SPOT_VERSION" != "9.2.0" ]; then
-            echo "::warning::Pixie download manager supports Spotify 9.2.0 only (this IPA is $SPOT_VERSION); skipping."
+          if [ "$SPOT_VERSION" != "9.2.2" ]; then
+            echo "::warning::Pixie download manager supports Spotify 9.2.2 only (this IPA is $SPOT_VERSION); skipping."
             exit 0
           fi
           python3 NativeDownloads/tools/validate_eevee_9192.py
