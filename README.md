@@ -4,7 +4,7 @@
 > **This is Glongq's independently maintained fork**, not an official EeveeSpotify or Spotify release.
 > Original project: **[SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)**.
 
-**Current version: Pixie Manager v1.4** · Spotify **9.1.92** · EeveeSpotify **7.0.0**
+**Current version: Pixie Manager v1.4** · Spotify **9.2.2** (9.2.0 is supported too) · EeveeSpotify **7.5.0**
 
 **Fork maintainer:** [Glongq](https://github.com/Glongq)
 
@@ -18,6 +18,8 @@
 - Share audio files straight from the Spotify share menu
 - Downloaded tracks manager: browse by artist and release, select, export or delete
 - Faster artist downloads
+- Spotify 9.2.2 support (9.2.0 still works)
+- A failed removal shows counts and one short reason instead of a note per track
 
 ## Pixie
 
@@ -35,7 +37,9 @@ English-only settings in **EeveeSpotify → Pixie Download Manager**.
 
 ## Downloads
 
-**[Download Spotify 9.1.92 + EeveeSpotify + Pixie Manager v1.4 — Telegram post](https://t.me/glongqforks/23)**
+**[Spotify 9.1.92 + EeveeSpotify + Pixie Manager v1.4 (older build) — Telegram post](https://t.me/glongqforks/23)**
+
+Spotify 9.2.2 and 9.2.0 builds: see the [build guide](BUILD-pixie-v1.4.md) and the announcements below.
 
 Download the IPA from the linked post. Updates and release announcements: [@glongqforks](https://t.me/glongqforks). This repository contains source code; no IPA or DEB files are hosted here. GitHub's “Source code” archives are not installable apps.
 
@@ -45,9 +49,11 @@ GitHub's automatic source archives contain source code, not an installable app.
 
 ## Verification and compatibility
 
-Targets Spotify **9.1.92**, ARM64 UUID `2acd33ee445b326d8b75b3e32403790a`, with EeveeSpotify **7.0.0**. Builders validate the UUID and instruction bytes; a matching version label alone is insufficient. Liquid Glass requires iOS 26.
+Targets Spotify **9.2.2** (ARM64 UUID `bedf0071845d39bbb2d096f9a8095e66`) and **9.2.0** (`b49e75781d8635d38bb57daf68fed8a8`), with EeveeSpotify **7.5.0**. Builders validate the UUID and instruction bytes; a matching version label alone is insufficient. Liquid Glass requires iOS 26.
 
 Local IPA builds, signatures, imports and component tests passed. Offline-device tests include the actual Swift Eevee authentication provider with all HTTP intercepted; they do not modify real registrations. Maintainer-supplied device logs confirm completed downloads with the refactored library. Offline playback has not been independently retested for this revision. This target does not rebuild jailbreak packages.
+
+On Spotify 9.2.2, startup, downloads, removal and the offline-device list were checked on iPhone 15 Pro Max; audio export was not run on the device.
 
 Historical baseline downloads and offline playback were verified by the maintainer through SideStore and LiveContainer on iPhone 15 Pro Max / iOS 27.0.1. These are historical results, not verification of every later build.
 
@@ -64,7 +70,7 @@ See [BUILD-pixie-v1.4.md](BUILD-pixie-v1.4.md) for the current IPA build command
 
 The original EeveeSpotifyReincarnated project is maintained by [jaydenjcpy](https://github.com/jaydenjcpy), [faroukbmiled](https://github.com/faroukbmiled), and [Mod4](https://github.com/M0d-4). Upstream history and contributions also include [estrogencat](https://github.com/estrogencat), [Skye](https://github.com/Meeep1), [whoeevee](https://github.com/whoeevee), and [Spikerko](https://github.com/Spikerko).
 
-Pixie Manager v1.3 and v1.4 were ported from [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) to EeveeSpotify 7.0.0 / Spotify 9.1.92. The native patchers validate the exact Spotify binary and guarded instruction bytes.
+Pixie Manager v1.3 and v1.4 were ported from [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) to EeveeSpotify 7.0.0 / Spotify 9.1.92, and later to Spotify 9.2.0 and 9.2.2 (EeveeSpotify 7.5.0). The native patchers validate the exact Spotify binary and guarded instruction bytes.
 
 **OpenAI Codex** produced the native-download implementation, integration, documentation and local builds under **Glongq's direction**. Glongq performed device testing and supplied feedback. This fork is independent of the upstream maintainers.
 
