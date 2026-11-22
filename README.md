@@ -1,120 +1,74 @@
-![Banner](Images/banner.png?)
+# EeveeSpotify + Pixie Download Manager — UNOFFICIAL FORK
 
-# EeveeSpotifyReincarnated
+> [!IMPORTANT]
+> **This is Glongq's independently maintained fork**, not an official EeveeSpotify or Spotify release.
+> Original project: **[SideloadLabs/EeveeSpotifyReincarnated](https://github.com/SideloadLabs/EeveeSpotifyReincarnated)**.
 
-**Maintainers:** [jaydenjcpy](https://github.com/jaydenjcpy) & [faroukbmiled](https://github.com/faroukbmiled) & [Mod4](https://github.com/M0d-4) <br />
-**Last Update:** `11/22/26` **Spotify Version:** `9.2.2`
+**Current version: Pixie Manager v1.4** · Spotify **9.1.92** · EeveeSpotify **7.0.0**
 
-This tweak makes Spotify think you have a Premium subscription, granting free listening, just like Spotilife, and provides some additional features like custom lyrics.
+**Fork maintainer:** [Glongq](https://github.com/Glongq)
 
-> [!NOTE]
-> The original EeveeSpotify repository was disabled due to a [DMCA takedown](https://github.com/github/dmca/blob/master/2025/08/2025-08-14-spotify.md). This repository will not contain IPA packages in the repo itself.
+**Native-download implementation, integration, documentation and local builds:** OpenAI Codex, under Glongq's direction.
 
-## Custom Lyrics Support
+**License:** [GPLv3](LICENSE). Upstream history and contributor attribution are retained.
 
-**Spotify 9.1.56 and above** - Full custom lyrics functionality is available with the following providers:
-- **SpicyLyrics**
-- **LRCLIB**
-- **Genius**
-- **PetitLyrics**
+## What's New
 
-## How to build an EeveeSpotify IPA using Github actions
-> [!NOTE]
-> If this your first time, complete following steps before starting:
->
-> 1. Fork this repository using the fork button on the top right
-> 2. On your forked repository, go to **Repository Settings** > **Actions**, enable **Read and Write** permissions.
+- Export downloaded tracks to files: M4A (default) or Ogg
+- Share audio files straight from the Spotify share menu
+- Downloaded tracks manager: browse by artist and release, select, export or delete
+- Faster artist downloads
 
-<details>
-  <summary>How to build the EeveeSpotify IPA</summary>
-  <ol>
-    <li>Click on <strong>Sync fork</strong>, and if your branch is out-of-date, click on <strong>Update branch</strong>.</li>
-    <li>Navigate to the <strong>Actions tab</strong> in your forked repository and select <strong>Create IPA Packages</strong> if you're on desktop/widescreen. Tap on <strong>All Workflows</strong> and select <strong>Create IPA Packages</strong> if you're on mobile/portrait.</li>
-    <li>Click the <strong>Run workflow</strong> button located on the right side.</li>
-    <li>Prepare a decrypted .ipa file <em>(we cannot provide this due to legal reasons)</em>, then upload it to a file provider (e.g., filebin.net, filemail.com, or Dropbox is recommended). Paste the URL of the decrypted IPA file in the provided field.</li>
-    <li><strong>NOTE:</strong> Make sure to provide a direct download link to the file, not a link to a webpage. Otherwise, the process will fail.</li>
-    <li>Go to the releases page of the EeveeSpotify repository (<strong>NOT</strong> the fork). Hold and copy the link of the .deb file, which corresponds to your phone's architecture.</li>
-    <li>Make sure all inputs are correct, then click <strong>Run workflow</strong> to start the process.</li>
-    <li>Wait for the build to finish. You can download the EeveeSpotify IPA from the releases section of your forked repo. (If you can't find the releases section, go to your forked repo and add /releases to the URL, i.e., github.com/user/EeveeSpotifyReborn/releases.)</li>
-  </ol>
-</details>
+## Pixie
 
-## The History
+<p align="left">
+  <img src="Images/pixie-manager.gif" width="200" alt="Pixie Manager downloading artist releases">
+</p>
 
-In January 2024, Spotilife, the only tweak to get Spotify Premium, stopped working on new Spotify versions. [whoeevee](https://github.com/whoeevee) decompiled Spotilife, reverse-engineered Spotify, intercepted requests, etc., and created EeveeSpotify.
+English-only settings in **EeveeSpotify → Pixie Download Manager**.
 
-In August 2025, the original EeveeSpotify repository was disabled following a [DMCA takedown](https://github.com/github/dmca/blob/master/2025/08/2025-08-14-spotify.md) by Spotify.
+- Native downloads for tracks, albums and playlists, including the current track's album.
+- Artist release selection with artwork, category selection, queue/progress and Stop, Continue and Cancel controls.
+- Offline-device management with confirmed registration changes and source readback.
+- Optional diagnostics, one support-log export and manual log reset. Diagnostics are off by default.
+- Spotify's own offline storage and playback remain in use. No MP3/WAV export; WAV capture code has been removed.
 
-In December 2025, whoeevee, the maintainer of the EeveeSpotify tweak at the time, announced he would be discontinuing the tweak because of the burden of keeping up with Spotify's constantly changing architectures. Soon after, [Skye (@Meeep1)](https://github.com/Meeep1) forked the original Eevee repo and continued developing the tweak to support newer Spotify versions, under the project name EeveeSpotifyRevivedPublic.
+## Downloads
 
-In March 2026, users of the latest EeveeSpotifyRevivedPublic release (v9.1.28) experienced constant logout issues and reported them to Skye, but EeveeSpotifyRevivedPublic hadn't released any newer updates. During March, I was constantly annoyed by the logout issue and decided to take matters into my own hands: I forked EeveeSpotifyRevivedPublic, fixed the logout issue, and that fork eventually became this repository — **EeveeSpotifyReincarnated** — continuing the legacy of EeveeSpotify for newer versions of Spotify.
+**[Download Spotify 9.1.92 + EeveeSpotify + Pixie Manager v1.4 — Telegram post](https://t.me/glongqforks/23)**
 
-Today, EeveeSpotifyReincarnated is maintained by [jaydenjcpy](https://github.com/jaydenjcpy), [faroukbmiled](https://github.com/faroukbmiled), and [Mod4](https://github.com/M0d-4), keeping the tweak alive as Spotify keeps changing.
+Download the IPA from the linked post. Updates and release announcements: [@glongqforks](https://t.me/glongqforks). This repository contains source code; no IPA or DEB files are hosted here. GitHub's “Source code” archives are not installable apps.
 
-## Restrictions
+**[Previous Pixie v1 jailbreak packages](https://github.com/Glongq/EeveeSpotifyReincarnated/releases/tag/pixie-v1)** target Spotify 9.1.88. They have not been rebuilt from the current v1.4 sources. To reproduce those packages, check out tag `pixie-v1` and use its build guide.
 
-Please refrain from opening issues about the following features, as they are server-sided and will **NEVER** work:
+GitHub's automatic source archives contain source code, not an installable app.
 
-- Very High/Lossless audio quality
-- Jam (hosting a Spotify Jam and joining it remotely requires Premium; only joining in-person works)
-- AI DJ/Playlist
-- Spotify Connect (When using Spotify Connect, the device will act as a remote control and stream directly to the connected device. This is a server-sided limitation and is beyond the control of EeveeSpotify, so it will behave as if you have a Free subscription while using this feature.)
+## Verification and compatibility
 
-## [Common Issues](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/blob/Master/common_issues.md)
-Please check out the hyperlink above before opening an issue
+Targets Spotify **9.1.92**, ARM64 UUID `2acd33ee445b326d8b75b3e32403790a`, with EeveeSpotify **7.0.0**. Builders validate the UUID and instruction bytes; a matching version label alone is insufficient. Liquid Glass requires iOS 26.
 
-## Lyrics Support
+Local IPA builds, signatures, imports and component tests passed. Offline-device tests include the actual Swift Eevee authentication provider with all HTTP intercepted; they do not modify real registrations. Maintainer-supplied device logs confirm completed downloads with the refactored library. Offline playback has not been independently retested for this revision. This target does not rebuild jailbreak packages.
 
-EeveeSpotify replaces Spotify monthly limited lyrics with one of the following four lyrics providers:
+Historical baseline downloads and offline playback were verified by the maintainer through SideStore and LiveContainer on iPhone 15 Pro Max / iOS 27.0.1. These are historical results, not verification of every later build.
 
-- Genius: Offers the best quality lyrics, provides the most songs, and updates lyrics the fastest. Does not and will never be time-synced.
+## Source and build
 
-- LRCLIB: The most open service, offering time-synced lyrics. However, it lacks lyrics for many songs.
+See [BUILD-pixie-v1.4.md](BUILD-pixie-v1.4.md) for the current IPA build commands and [source provenance](NativeDownloads/provenance-pixie-v1.4.json) for source hashes. See the [integration and file map](NativeDownloads/docs/INTEGRATION-MAP.md), [module ownership](NativeDownloads/README.md) and [data contracts](NativeDownloads/docs/CONTRACTS.md). Historical tooling remains available in Git history.
 
-- PetitLyrics: Offers plenty of time-synced Japanese and some international lyrics.
+## Reporting issues and announcements
 
-- SpicyLyrics : Provides word-by-word karaoke lyrics. A built-in key is used by default. You can use your own key if you want to.
+- **Announcements:** [@glongqforks](https://t.me/glongqforks).
+- **Issues:** [Glongq/EeveeSpotifyReincarnated](https://github.com/Glongq/EeveeSpotifyReincarnated/issues). Include the installation method, Spotify build and iOS version; redact personal data from logs.
 
-If the tweak is unable to find a song or process the lyrics, you'll see a "Couldn't load the lyrics for this song" message. The lyrics might be wrong for some songs when using Genius due to how the tweak searches songs. While I've made it work in most cases, kindly refrain from opening issues about it.
+## Upstream project and credits
 
-## How It Works
+The original EeveeSpotifyReincarnated project is maintained by [jaydenjcpy](https://github.com/jaydenjcpy), [faroukbmiled](https://github.com/faroukbmiled), and [Mod4](https://github.com/M0d-4). Upstream history and contributions also include [estrogencat](https://github.com/estrogencat), [Skye](https://github.com/Meeep1), [whoeevee](https://github.com/whoeevee), and [Spikerko](https://github.com/Spikerko).
 
-EeveeSpotify intercepts Spotify requests to load user data, deserializes it, and modifies the parameters in real-time. This method works incredibly stable across supported Spotify versions.
+Pixie Manager v1.3 and v1.4 were ported from [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) to EeveeSpotify 7.0.0 / Spotify 9.1.92. The native patchers validate the exact Spotify binary and guarded instruction bytes.
 
-The tweak also sets `trackRowsEnabled` to `true`, allowing you to see track rows and liked tracks on artist pages just like with Premium.
+**OpenAI Codex** produced the native-download implementation, integration, documentation and local builds under **Glongq's direction**. Glongq performed device testing and supplied feedback. This fork is independent of the upstream maintainers.
 
-## Installation
-
-For sideloaded IPAs, we recommend using [**SideStore**](https://sidestore.io), or certificate-based signing tools like [**FlareStore**](https://flarestore.app), [**RyukSign**](https://github.com/faroukbmiled/RyukSign) for best compatibility.
-
-To open Spotify links in sideloaded app, use [OpenSpotifySafariExtension](https://github.com/BillyCurtis/OpenSpotifySafariExtension). Remember to activate it and allow access in Settings > Safari > Extensions.
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening issues or pull requests.
-
-Contributions are welcome — bug fixes, new features, and translations alike. If you'd like to translate the tweak into your language or improve an existing localization, see [TRANSLATING.md](TRANSLATING.md) for the workflow, the rules, and the `Tools/l10n_lint.py` checker that validates your translation before you open a PR.
-
-## Credits
-Thanks for all of the community's support, also, thanks to all the devs who worked to revive this project. Go check the devs out:
-
-[jaydenjcpy](https://github.com/jaydenjcpy)
-
-[Ryuk](https://github.com/faroukbmiled) 
-
-[Mod4](https://github.com/M0d-4)
-
-[estrogencat](https://github.com/estrogencat)
-
-[Skye](https://github.com/Meeep1) 
-
-[whoeevee](https://github.com/whoeevee) 
-
-[Spikerko](https://github.com/Spikerko)
-
-[Glonq](https://github.com/Glongq)
-
-- This project is a fork of [Meeep1/EeveeSpotifyRevivedPublic](https://github.com/Meeep1/EeveeSpotifyRevivedPublic).
+[Upstream README](https://github.com/SideloadLabs/EeveeSpotifyReincarnated#readme) · [Contributing](CONTRIBUTING.md) · [Translations](TRANSLATING.md) · [License](LICENSE)
 
 ## Vibecoded Pull Requests & AI generated Commit Comments
 
@@ -122,18 +76,4 @@ Please note that there are some vibecoded pull requests and ai generated commit 
 
 ## Disclaimer
 
-This project is an **independent modification (tweak)** for the Spotify app. We are **not affiliated, associated, authorized, endorsed by, or in any way officially connected with Spotify**, or any of its subsidiaries or affiliates. 
-
-This tweak is created solely for **personal and educational purposes**. Use it at your own risk.
-
-**We do not take any responsibility for any issues, damages, or consequences** resulting from the use or misuse of this tweak. If something breaks, it's not our problem.
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=SideloadLabs%2FEeveeSpotifyReincarnated&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=SideloadLabs/EeveeSpotifyReincarnated&type=date&theme=dark&legend=top-left&sealed_token=C1hKWTv3UNdLAgsZjjCL7Rthp6YSGB4Mm9kIalnH1lgZXZnYVL09WbBt57E-FFzQXg8gZyFOW356S5XMTWmvQdIuEihF66WxqGuJTejmAdJx5XJHxC2l3A" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=SideloadLabs/EeveeSpotifyReincarnated&type=date&legend=top-left&sealed_token=C1hKWTv3UNdLAgsZjjCL7Rthp6YSGB4Mm9kIalnH1lgZXZnYVL09WbBt57E-FFzQXg8gZyFOW356S5XMTWmvQdIuEihF66WxqGuJTejmAdJx5XJHxC2l3A" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=SideloadLabs/EeveeSpotifyReincarnated&type=date&legend=top-left&sealed_token=C1hKWTv3UNdLAgsZjjCL7Rthp6YSGB4Mm9kIalnH1lgZXZnYVL09WbBt57E-FFzQXg8gZyFOW356S5XMTWmvQdIuEihF66WxqGuJTejmAdJx5XJHxC2l3A" />
- </picture>
-</a>
+This is an unofficial independent modification, not affiliated with, authorized by, or endorsed by Spotify. Use at your own risk. No Spotify application binaries are included in the source repository.

@@ -72,3 +72,13 @@ If a change is experimental or only relevant to a narrow version range, say so d
 
 
 
+
+## Native Downloads fork
+
+For changes to this fork's extension, read `NativeDownloads/README.md` and
+`docs/native-downloads.md`. Run the portable provenance/patcher checks, and run the
+Apple Silicon host suite for affected runtime paths. Preserve exact binary guards,
+state-based completion checks and the no-blind-mutation-retry policy. Record the
+Spotify Mach-O UUID, installation method, release and actual verification scope.
+The v4 runtime snapshot is hash checked; update provenance and release identity
+when intentionally changing it. Submit extension issues to this fork.
