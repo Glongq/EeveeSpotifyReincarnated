@@ -1,4 +1,4 @@
-name: Pixie 1.4 — Spotify 9.2.0 and 9.2.2
+name: Pixie 1.4 — Spotify 9.2.2
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: 'Optional HTTPS URL to the compatible Spotify 9.2.0 or 9.2.2 / EeveeSpotify 7.5.0 IPA'
+        description: 'Optional HTTPS URL to the compatible Spotify 9.2.2 / EeveeSpotify 7.5.0 IPA'
         required: false
         default: ''
         type: string
@@ -74,7 +74,7 @@ jobs:
           curl --proto '=https' --proto-redir '=https' --location --fail "$SOURCE_IPA_URL" --output "$RUNNER_TEMP/source.ipa"
           curl --proto '=https' --proto-redir '=https' --location --fail "$EEVEE_DYLIB_URL" --output "$RUNNER_TEMP/EeveeSpotify.dylib"
           mkdir -p outputs/ci-package
-          python3 NativeDownloads/tools/build_eevee_9192.py "$RUNNER_TEMP/source.ipa" --eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib" --output outputs/ci-package/Spotify-9.2.0-EeveeSpotify-Pixie-v1.4.ipa > outputs/ci-package/build-report.json
+          python3 NativeDownloads/tools/build_eevee_9192.py "$RUNNER_TEMP/source.ipa" --eevee-dylib "$RUNNER_TEMP/EeveeSpotify.dylib" --output outputs/ci-package/Spotify-9.2.2-EeveeSpotify-Pixie-v1.4.ipa > outputs/ci-package/build-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: eevee-9192-pixie-1.4

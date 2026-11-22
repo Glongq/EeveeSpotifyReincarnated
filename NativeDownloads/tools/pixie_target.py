@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 import os
-PROFILE_PATH = ROOT / os.environ.get("PIXIE_TARGET", "targets/spotify-9.2.0.json")
+PROFILE_PATH = ROOT / os.environ.get("PIXIE_TARGET", "targets/spotify-9.2.2.json")
 PROFILE = json.loads(PROFILE_PATH.read_text())
 
 
