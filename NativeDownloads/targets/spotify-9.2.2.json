@@ -23,7 +23,8 @@
     "dlsym_stub": "0x10a868de0",
     "dlsym_stub_head": "909701f0106646f900021fd6",
     "render_callback": "0x109f58804",
-    "manager_field_shift": 136
+    "manager_field_shift": 136,
+    "manager_setter_slot": 69
   },
   "groups": {
     "transport": [

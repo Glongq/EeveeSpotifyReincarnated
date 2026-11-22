@@ -53,6 +53,8 @@ def main(new_path, out_path):
     n["selector_cave"] = CAVES["selector_cave"]
     # The quota counters moved with the rest of the manager's fields from +0x238 on: +0x80 over 9.2.0.
     n["manager_field_shift"] = 8 + 0x80
+    # Four slots were added before it: the setter's vtable slot is 69 (it was 65).
+    n["manager_setter_slot"] = 69
     for t in p["trace_points"]:
         t["address"] = h(SITES["trace"][t["name"]])
         # The Request boundary is the call site the key-mode patch has already rewritten to "mov w2, #0".
