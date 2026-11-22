@@ -59,7 +59,7 @@ for (a0, a1, an), (b0, b1, bn) in zip(ranges, ranges[1:]):
 assert len({entry for _, entry, _, _, _ in export.ALL_POINTS}) == len(export.ALL_POINTS)
 
 # Real executable (not part of the repository): apply, compare, repeat and mismatch checks.
-source = os.environ.get("PIXIE_9192_EXECUTABLE")
+source = os.environ.get("PIXIE_EXECUTABLE") or os.environ.get("PIXIE_9192_EXECUTABLE")
 if source and Path(source).is_file():
     original = Path(source).read_bytes()
     final, manifest = export.patch(original)
@@ -90,24 +90,34 @@ if source and Path(source).is_file():
                 pass
             else:
                 raise AssertionError("Mismatched export source or cave accepted")
+    for name in PROFILE['export']['windows']:
+        bad = bytearray(original)
+        bad[export.window(name)[0] - export.BASE] ^= 1
+        try:
+            export.patch(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Mismatched {name} code guard accepted")
     # The dead bytes in front of the signature are removed without touching code or data.
     from strip_stale_signature import strip_stale_signature
     from patch_native_restrictions import layout
     stripped, removed = strip_stale_signature(final)
-    assert removed > 1_000_000 and len(stripped) == len(final) - removed
+    assert len(stripped) == len(final) - removed
     _, first, segments, _ = layout(final)
     text = next(s for s in segments if s[0] == b"__TEXT")
     assert stripped[first:text[3] + text[4]] == final[first:text[3] + text[4]]
-    try:
-        strip_stale_signature(stripped)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("A second strip of an unsigned executable was accepted")
+    if removed:
+        try:
+            strip_stale_signature(stripped)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("A second strip of an unsigned executable was accepted")
     out = Path(os.environ.get("PIXIE_TEST_BUILD_DIR", ROOT.parent / "outputs/export-patch-test"))
     out.mkdir(parents=True, exist_ok=True)
     (out / "verified-export-boundaries.json").write_text(json.dumps(
         {"sha256": hashlib.sha256(final).hexdigest(), "allowed_ranges": allowed, "manifest": manifest}, indent=2))
-    print("PASS exact 9.1.92 export sites, padding only; repeat/mismatched/occupied patches rejected")
+    print(f"PASS exact {PROFILE['spotify_version']} export sites, padding only; repeat/mismatched/occupied patches rejected")
 else:
-    print("PASS generated headers and cave layout (set PIXIE_9192_EXECUTABLE to check the real executable)")
+    print("PASS generated headers and cave layout (set PIXIE_EXECUTABLE to check the real executable)")

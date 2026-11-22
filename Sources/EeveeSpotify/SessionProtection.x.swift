@@ -167,13 +167,23 @@ class LegacyLoginControllerHook: ClassHook<NSObject> {
     }
 }
 
+// Returns the first name the runtime knows, for classes Spotify moves between
+// modules. Falls back to the first name so a miss still logs a real class name.
+func classNameFallback(_ names: String...) -> String {
+    names.first { NSClassFromString($0) != nil } ?? names[0]
+}
+
 // MARK: - OauthAccessTokenBridge — Extend token expiry
-// Private Connectivity_SessionImpl class holding the OAuth expiry. Forcing a
-// far-future expiresAt keeps the internal timer from marking the token expired.
+// Private class holding the OAuth expiry. Forcing a far-future expiresAt keeps
+// the internal timer from marking the token expired. Spotify 9.2 moved it from
+// Connectivity_SessionImpl to Authentication_AuthAPI.
 
 class OauthAccessTokenBridgeHook: ClassHook<NSObject> {
     typealias Group = SessionLogoutConnectivityHookGroup
-    static let targetName = "_TtC24Connectivity_SessionImplP33_831B98CC28223E431E21CD27ADD20AF222OauthAccessTokenBridge"
+    static let targetName = classNameFallback(
+        "_TtC22Authentication_AuthAPIP33_51216C0E0622094D354255A3124BC44D22OauthAccessTokenBridge",
+        "_TtC24Connectivity_SessionImplP33_831B98CC28223E431E21CD27ADD20AF222OauthAccessTokenBridge"
+    )
 
     func expiresAt() -> Any {
         let farFuture = Date(timeIntervalSinceNow: 365 * 24 * 60 * 60)
@@ -325,6 +335,12 @@ class URLSessionTaskResumeHook: ClassHook<NSObject> {
             let elapsed = Date().timeIntervalSince(tweakInitTime)
             let elapsedInt = Int(elapsed)
             let path = url.path
+
+            if url.isAdRelated {
+                writeDebugLog("[ORACLE][NET_BLOCK] Cancelled ad task at \(elapsedInt)s: \(host)\(path)")
+                task.cancel()
+                return
+            }
 
             // bootstraps pass through: modifyRemoteConfiguration is idempotent, and
             // cancelling the second one broke fresh login on 9.1.34.

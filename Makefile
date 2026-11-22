@@ -1,6 +1,3 @@
-ifeq ($(NATIVE_DOWNLOADS_JAILBREAK),1)
-$(error This project supports the 9.1.92 companion IPA target only; historical DEB tooling is in NativeDownloads/legacy)
-endif
 TARGET := iphone:clang:latest:14.0
 INSTALL_TARGET_PROCESSES = Spotify
 ARCHS = arm64
@@ -16,7 +13,7 @@ BRANCH_NAME ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
 BRANCH_NAME_FINAL := $(if $(BRANCH_NAME),$(BRANCH_NAME),Master)
 
 $(shell mkdir -p Sources/EeveeSpotify/Generated)
-$(shell config_tmp=$$(mktemp); printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    static let branchName = "%s"\n}\n' "$(REPO_SLUG_FINAL)" "$(BRANCH_NAME_FINAL)" > "$$config_tmp"; cmp -s "$$config_tmp" Sources/EeveeSpotify/Generated/RepoSlug.swift || cp "$$config_tmp" Sources/EeveeSpotify/Generated/RepoSlug.swift; rm -f "$$config_tmp")
+$(shell printf 'enum GeneratedConfig {\n    static let repoSlug = "%s"\n    static let branchName = "%s"\n}\n' "$(REPO_SLUG_FINAL)" "$(BRANCH_NAME_FINAL)" > Sources/EeveeSpotify/Generated/RepoSlug.swift)
 
 EeveeSpotify_FILES = $(shell find Sources/EeveeSpotify -name '*.swift') $(shell find Sources/EeveeSpotifyC -name '*.m' -o -name '*.c' -o -name '*.mm' -o -name '*.cpp')
 EeveeSpotify_FILES += Sources/EeveeSpotifyC/PixieArtistFollow.x
@@ -38,7 +35,6 @@ endif
 # in build-ipa-local.sh and the GitHub workflow. No flags needed here.
 
 include $(THEOS_MAKE_PATH)/tweak.mk
-
 
 internal-stage::
 	# Bundle EeveeSwiftProtobuf.framework into the package. Renamed from

@@ -3,7 +3,6 @@ import Foundation
 extension UserDefaults {
     static var container: UserDefaults = .standard
     
-    private static let musixmatchTokenKey = "musixmatchToken"
     private static let darkPopUpsKey = "darkPopUps"
     private static let debugLoggingEnabledKey = "debugLoggingEnabled"
     private static let patchTypeKey = "patchType"
@@ -16,14 +15,11 @@ extension UserDefaults {
     private static let cachedCustomizeDataKey = "eeveeCachedCustomizeData"
     private static let iconNamePrettifyKey = "iconNamePrettify"
     private static let cleanShareLinksKey = "cleanShareLinks"
+    private static let localPlaylistDownloadEnabledKey = "localPlaylistDownloadEnabled"
 
-    static var musixmatchToken: String {
-        get {
-            container.string(forKey: musixmatchTokenKey) ?? ""
-        }
-        set (token) {
-            container.set(token, forKey: musixmatchTokenKey)
-        }
+    static var localPlaylistDownloadEnabled: Bool {
+        get { container.object(forKey: localPlaylistDownloadEnabledKey) as? Bool ?? true }
+        set { container.set(newValue, forKey: localPlaylistDownloadEnabledKey) }
     }
 
     static var darkPopUps: Bool {
@@ -88,7 +84,7 @@ extension UserDefaults {
     /// gets a 304 with no body — without this persisted copy the tweak has
     /// nothing to replay and free-tier/ad flags re-enable mid-session.
     static var cachedCustomizeData: Data? {
-        get { container.data(forKey: cachedCustomizeDataKey) }
+        get { PixieCustomizeRewrite.apply(container.data(forKey: cachedCustomizeDataKey)) }
         set {
             if let newValue {
                 container.set(newValue, forKey: cachedCustomizeDataKey)

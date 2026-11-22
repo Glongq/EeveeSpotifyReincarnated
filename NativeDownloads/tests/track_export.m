@@ -42,7 +42,7 @@ int main(void){@autoreleasepool {
 
     NSURL *folder=[NSURL fileURLWithPath:[SAPExportTestHome stringByAppendingPathComponent:@"out"]];[NSFileManager.defaultManager createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil];
     uint8_t file[20]={1},key[16]={2};NSData *identifier=[NSData dataWithBytes:file length:20];
-    uint8_t descriptor[24]={0},owner[0xd0]={0};memcpy(descriptor+4,file,20);uintptr_t p=(uintptr_t)descriptor;memcpy(owner+0xc8,&p,8);
+    uint8_t descriptor[24]={0},owner[SAPExportOwnerDescriptorOffset+8];memset(owner,0,sizeof(owner));memcpy(descriptor+4,file,20);uintptr_t p=(uintptr_t)descriptor;memcpy(owner+SAPExportOwnerDescriptorOffset,&p,8);
     uintptr_t wrapper[2]={0,(uintptr_t)owner},functor[1]={(uintptr_t)wrapper},storage=(uintptr_t)functor;uint64_t r[20]={0};r[0]=(uintptr_t)&storage;r[1]=(uintptr_t)key;
     SAPExportObserveOfflineSuccess(r,0);
     uint8_t streamCapture[28]={0};memcpy(streamCapture+8,file,20);uintptr_t streamStorage=(uintptr_t)streamCapture;r[0]=(uintptr_t)&streamStorage;
@@ -90,7 +90,7 @@ int main(void){@autoreleasepool {
     NSCAssert(traceEvents.count==33,@"new diagnostic generation did not refresh coverage");
     traceActive=NO;traceEvents=nil;
     NSData *plain=fixture();NSCAssert(plain.length>0,@"fixture missing");
-    uint8_t cacheOwner[0x244]={0},cacheDescriptor[24]={0};memcpy(cacheDescriptor,file,20);cacheDescriptor[20]=7;cacheDescriptor[22]=0x34;cacheDescriptor[23]=0x12;
+    uint8_t cacheOwner[SAPExportCacheNamespaceOffset+20];memset(cacheOwner,0,sizeof(cacheOwner));uint8_t cacheDescriptor[24]={0};memcpy(cacheDescriptor,file,20);cacheDescriptor[20]=7;cacheDescriptor[22]=0x34;cacheDescriptor[23]=0x12;
     uint8_t *image=calloc(1,SAPExportCacheKeyBodyOffset+0x100);const uint8_t *mapGuard=SAPExportCacheKeyBody;memcpy(image+SAPExportCacheKeyBodyOffset,mapGuard,sizeof(SAPExportCacheKeyBody));
     uint64_t cacheFrame[2]={(uintptr_t)cacheOwner,(uintptr_t)cacheDescriptor};SAPNativeCacheObserve(cacheFrame,(uintptr_t)image);free(image);
     NSString *digest=SAPNativeCacheCandidates(identifier)[0][@"cache_id_hex"];
@@ -193,8 +193,8 @@ int main(void){@autoreleasepool {
     storeKey(file,key);
     // Match an independently generated two-layer encrypted native cache fixture.
     const uint8_t namespaceBytes[]={0xed,0x2a,0x9b,0x1f,0x0c,0x6d,0xc8,0xd0,0x91,0x4d,0x7e,0x23,0xb0,0x6b,0x92,0x33,0x59,0xa4,0x47,0x4a};
-    memcpy(cacheOwner+0x230,namespaceBytes,20);cacheDescriptor[20]=0;
-    image=calloc(1,SAPCacheStorageOwnerOffset+0x200);NSCAssert(image,@"test image allocation");
+    memcpy(cacheOwner+SAPExportCacheNamespaceOffset,namespaceBytes,20);cacheDescriptor[20]=0;
+    image=calloc(1,MAX(SAPCacheStorageOwnerOffset+0x200,SAPExportCacheKeyBodyOffset+sizeof(SAPExportCacheKeyBody)));NSCAssert(image,@"test image allocation");
     memcpy(image+SAPExportCacheKeyBodyOffset,mapGuard,sizeof(SAPExportCacheKeyBody));
     memcpy(image+SAPCacheStorageOwnerOffset,SAPCacheStorageOwnerCode,sizeof(SAPCacheStorageOwnerCode));
     uint8_t storageSource[20];for(unsigned i=0;i<20;i++)storageSource[i]=(uint8_t)(i+1);

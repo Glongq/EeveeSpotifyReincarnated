@@ -391,7 +391,53 @@ private let propertyReplacements = [
 ]
 
 private func modifyAssignedValues(_ values: inout [AssignedValue]) {
-    for replacement in propertyReplacements {
+    applyPropertyReplacements(propertyReplacements, to: &values)
+
+    for index in values.indices {
+        let scope = values[index].propertyID.scope.lowercased()
+        let name = values[index].propertyID.name.lowercased()
+        guard case .boolValue(let b) = values[index].structuredValue, b.value else { continue }
+        if isCohortAdOrUpsellFlag(scope: scope, name: name) {
+            values[index].boolValue = BoolValue.with { $0.value = false }
+            writeDebugLog("[ORACLE][COHORT_FLAG_KILLED] \(scope).\(name)")
+        }
+    }
+}
+
+/// Rewrites 9.2's remote configuration (remote-config-resolver/v3/configuration),
+/// a serialized `ResolveResponse`. On 9.2 it replaces the bootstrap and customize
+/// responses modifyRemoteConfiguration rewrites, so none of propertyReplacements
+/// reach it; only the crossfade replacements are applied here so far. Returns nil
+/// when the bytes are not that proto or nothing changed, so the caller leaves the
+/// response untouched.
+func rewriteRemoteConfigurationData(_ data: Data) -> Data? {
+    guard var response = try? ResolveResponse(serializedBytes: data),
+          !response.configuration.assignedValues.isEmpty else { return nil }
+
+    let replacements = EeveeCrossfade.replacements
+    func summary() -> String {
+        replacements.compactMap { replacement in
+            guard let scope = replacement.scope, let name = replacement.name else { return nil }
+            let value = response.configuration.assignedValues.first {
+                $0.propertyID.scope == scope && $0.propertyID.name == name
+            }
+            return "\(scope).\(name)=\(value.map { "\($0.boolValue.value)" } ?? "absent")"
+        }.joined(separator: " ")
+    }
+
+    let before = response.configuration.assignedValues
+    let beforeSummary = summary()
+    applyPropertyReplacements(replacements, to: &response.configuration.assignedValues)
+    guard response.configuration.assignedValues != before else {
+        writeDebugLog("[RemoteConfig] Nothing to change: \(beforeSummary)")
+        return nil
+    }
+    writeDebugLog("[RemoteConfig] Rewrote \(before.count) values; before[\(beforeSummary)] after[\(summary())]")
+    return try? response.serializedData()
+}
+
+private func applyPropertyReplacements(_ replacements: [EeveePropertyReplacement], to values: inout [AssignedValue]) {
+    for replacement in replacements {
         let matchingIndices = values.indices.filter({ index in
             let value = values[index]
             let nameMatches = replacement.name.map { value.propertyID.name == $0 } ?? true
@@ -424,6 +470,42 @@ private func modifyAssignedValues(_ values: inout [AssignedValue]) {
             }
         }
     }
+}
+
+func isCohortAdOrUpsellFlag(scope: String, name: String) -> Bool {
+    if name.hasPrefix("disable_") || name.contains("dismissible") || name.contains("skip_button") {
+        return false
+    }
+    let tokens = "\(scope).\(name)".split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    let adTokens: Set<String> = [
+        "ad", "ads", "adsbase", "adsswift", "adonappopen", "instreamads",
+        "leavebehind", "leavebehinds", "leavebehindadsbase", "marquee",
+        "upsell", "upsells", "sponsored", "adssponsoredcontext", "realtimead"
+    ]
+    return tokens.contains { adTokens.contains($0) }
+}
+
+/// Rewrites a serialized `AccountAttributesResponse` to Premium, using the same
+/// attribute policy as every other premium patch. Returns nil when the bytes are
+/// not that proto, so the caller leaves the response untouched.
+func rewriteAccountAttributesData(_ data: Data) -> Data? {
+    guard var response = try? AccountAttributesResponse(serializedBytes: data) else { return nil }
+    guard !response.accountAttributes.isEmpty else { return nil }
+
+    func describe(_ key: String) -> String {
+        response.accountAttributes[key].map { "\($0.value.map { "\($0)" } ?? "nil")" } ?? "absent"
+    }
+    func summary() -> String {
+        "on-demand=\(describe("on-demand")) player-license=\(describe("player-license")) type=\(describe("type"))"
+    }
+
+    let before = summary()
+    modifyAttributes(&response.accountAttributes)
+    writeDebugLog(
+        "[Attributes] Rewrote \(response.accountAttributes.count) account attributes; "
+        + "before[\(before)] after[\(summary())]"
+    )
+    return try? response.serializedData()
 }
 
 private func modifyAttributes(_ attributes: inout [String: AccountAttribute]) {
@@ -592,4 +674,26 @@ private func modifyAttributes(_ attributes: inout [String: AccountAttribute]) {
             attributes.removeValue(forKey: name)
         }
     }
+
+// Apply offline account overrides for local playlist sync or Pixie companion
+let needsLocalSyncOffline = UserDefaults.patchType.isPatching && LocalPlaylistDownload.launchEnabled
+
+if needsLocalSyncOffline || pixieCompanionPresent {
+    attributes["offline"] = AccountAttribute.with { $0.boolValue = true }
+    
+    if needsLocalSyncOffline {
+        writeDebugLog("[LOCAL_SYNC] Applied offline account override")
+    }
+    
+    if pixieCompanionPresent {
+        // Pixie companion (native offline downloads): on Spotify 9.2 the offline core reads these four
+        // entitlements from this response, not from the product-state objects Pixie also rewrites.
+        attributes["can-use-offline"] = AccountAttribute.with { $0.boolValue = true }
+        attributes["max-offline-tracks"] = AccountAttribute.with { $0.longValue = 10_000 }
+        attributes["max-offline-downloads-per-device"] = AccountAttribute.with { $0.longValue = 10_000 }
+    }
 }
+}
+
+private let pixieCompanionPresent: Bool =
+    dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SAPUpdateArtistDownloadsExternal") != nil

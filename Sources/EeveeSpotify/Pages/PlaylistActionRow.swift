@@ -87,7 +87,14 @@ final class PlaylistActionRow: UIView {
         let pinned = collapsed() || convert(bounds, to: nil).minY < (window?.safeAreaInsets.top ?? 0) + 50
         playHolder.map { holder in
             if holder.alpha != (pinned ? 1 : 0) { holder.alpha = pinned ? 1 : 0 }
-            holder.isUserInteractionEnabled = pinned
+            // A transparent view is already skipped by hit-testing. Disabling interaction as well is only safe on a
+            // wrapper: on pages where Spotify's play button has no wrapper the holder is the button itself, and
+            // switching it off would also switch off the control this row forwards taps to.
+            if holder === play {
+                if !holder.isUserInteractionEnabled { holder.isUserInteractionEnabled = true }
+            } else {
+                holder.isUserInteractionEnabled = pinned
+            }
         }
         guard pinned != faded else { return }
         faded = pinned
@@ -289,6 +296,47 @@ final class PlaylistActionRow: UIView {
         if wasHidden != artistDownloadButton.isHidden { setNeedsLayout() }
     }
 
+    // Fallback when Spotify's collection state is not available: what the original control exposes.
+    // The wording of its accessibility label differs between Spotify versions, so the label is only
+    // one of several signals.
+    private static func savedState(of control: UIView) -> Bool? {
+        let text = [control.accessibilityLabel, control.accessibilityValue].compactMap { $0?.lowercased() }.joined(separator: " ")
+        if ["remove", "added to", "saved to", "saved in", "unsave", "unlike", "in your library", "in library"].contains(where: text.contains) { return true }
+        if (control as? UIControl)?.isSelected == true || control.accessibilityTraits.contains(.selected) { return true }
+        if ["add to", "save to", "save ", "like"].contains(where: text.contains) { return false }
+        var queue: [(Any, Int)] = [(control, 0)]
+        while !queue.isEmpty {
+            let (value, depth) = queue.removeFirst()
+            for child in Mirror(reflecting: value).children {
+                guard let label = child.label?.lowercased() else { continue }
+                let description = String(describing: child.value).lowercased()
+                if label.contains("state") {
+                    if ["notadded", "notsaved", "unsaved", "unadded"].contains(where: description.contains) { return false }
+                    if ["added", "saved"].contains(where: description.contains) { return true }
+                    if depth < 2 { queue.append((child.value, depth + 1)) }
+                } else if label.contains("added") || label.contains("saved") || label.contains("selected") {
+                    if description == "true" { return true }
+                    if description == "false" { return false }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func pageURI(from root: UIView) -> String? {
+        let selector = NSSelectorFromString("spt_pageURI")
+        var responder: UIResponder? = root
+        while let current = responder {
+            if let controller = current as? UIViewController, controller.responds(to: selector),
+               let value = controller.perform(selector)?.takeUnretainedValue() {
+                let text = (value as? URL)?.absoluteString ?? value as? String
+                if let text, text.hasPrefix("spotify:album:") || text.hasPrefix("spotify:playlist:") { return text }
+            }
+            responder = current.next
+        }
+        return nil
+    }
+
     func sync() {
         if addButton.isHidden != (add == nil) {
             addButton.isHidden = add == nil
@@ -317,10 +365,12 @@ final class PlaylistActionRow: UIView {
         config?.title = playing ? Self.pauseTitle : Self.playTitle
         if playButton.configuration != config { playButton.configuration = config }
 
-        let liked = add?.accessibilityLabel?.lowercased().contains("remove") == true
+        // The album / playlist state comes from Spotify's collection state, which reports every change.
+        let saved = sourceRoot.flatMap { root in pageURI(from: root).map { EeveePixieSavedState(root, $0) { [weak self] in self?.sync() } } } ?? -1
+        let liked = saved >= 0 ? saved == 1 : add.flatMap(Self.savedState) ?? false
         var addConfig = addButton.configuration
         addConfig?.image = liked ? Self.checkImage : Self.plusImage
-        addConfig?.baseForegroundColor = liked ? Theme.accent : .white
+        addConfig?.baseForegroundColor = liked ? Theme.color(Theme.spotifyGreen) : .white
         if addButton.configuration != addConfig { addButton.configuration = addConfig }
 
         // Spotify marks shuffle with a small dot under its icon and swaps the icon for smart shuffle.

@@ -1,4 +1,7 @@
-"""Build the guarded SpotifyAudioProbe overlay for the supplied EeveeSpotify 7.0.0 / Spotify 9.1.92 IPA."""
+"""Build the guarded Eevee/Pixie IPA for the active pixie_target profile.
+
+The filename is retained for the existing project build entry point.
+"""
 import argparse
 import hashlib
 import json
@@ -34,7 +37,7 @@ def main():
     parser.add_argument("ipa", type=Path)
     parser.add_argument("--eevee-dylib", type=Path, help="EeveeSpotify rebuilt from the local sources")
     parser.add_argument("--output", type=Path, default=ROOT.parent / "outputs" /
-        datetime.now().strftime("build-%Y%m%d-%H%M%S-%f") / "Spotify-9.1.92-EeveeSpotify-Pixie-v1.4.ipa")
+        datetime.now().strftime("build-%Y%m%d-%H%M%S-%f") / f"Spotify-{PROFILE['spotify_version']}-EeveeSpotify-Pixie-v{PROFILE['pixie_version']}.ipa")
     args = parser.parse_args()
     validate_sources()
     source = args.ipa.resolve()
@@ -43,8 +46,7 @@ def main():
         parser.error("Choose a new output folder; the output IPA already exists")
     eevee = args.eevee_dylib.resolve() if args.eevee_dylib else None
     if eevee:
-        run("codesign", "--verify", "--strict", eevee)
-        run("xcrun", "dyld_info", "-validate_only", eevee)
+        # The dylib from a .deb is unsigned; it is ad-hoc signed and validated below.
         if b"EeveePixieUpdateArtistDownloads" not in eevee.read_bytes():
             raise RuntimeError("The rebuilt EeveeSpotify lacks the Pixie artist controls")
     if not source.is_file():
@@ -65,11 +67,11 @@ def main():
         info_name = "Payload/Spotify.app/Info.plist"
         info = plistlib.loads(archive.read(info_name))
         if info.get("CFBundleShortVersionString") != PROFILE["spotify_version"]:
-            raise RuntimeError("Expected Spotify 9.1.92")
+            raise RuntimeError(f"Expected Spotify {PROFILE['spotify_version']}")
         executable = "Payload/Spotify.app/Spotify"
         native = archive.read(executable)
         if layout(native)[3] != UUID:
-            raise RuntimeError("Unsupported Spotify 9.1.92 executable UUID")
+            raise RuntimeError("Unsupported Spotify executable UUID")
         if "Payload/Spotify.app/Frameworks/EeveeSpotify.dylib" not in archive.namelist():
             raise RuntimeError("Expected EeveeSpotify's EeveeSpotify.dylib")
         eevee_bytes = eevee.read_bytes() if eevee else archive.read("Payload/Spotify.app/Frameworks/EeveeSpotify.dylib")
@@ -115,12 +117,29 @@ def main():
     with ZipFile(output) as check:
         if check.testzip() is not None:
             raise RuntimeError("IPA ZIP integrity check failed")
-    print(json.dumps({"output": str(output), "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        with ZipFile(source) as original:
+            changed = [item.filename for item in original.infolist()
+                       if original.read(item.filename) != check.read(item.filename)]
+            if set(changed) != {executable, "Payload/Spotify.app/Frameworks/EeveeSpotify.dylib"}:
+                raise RuntimeError(f"Unexpected changed IPA entries: {changed}")
+            plugins = {name: hashlib.sha256(check.read(name)).hexdigest()
+                       for name in original.namelist() if name.endswith('.dylib') and 'EeveeSpotify' not in name}
+    from source_provenance import snapshot
+    report = {"output": str(output), "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+                      "input": str(source), "input_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                      "spotify_version": PROFILE['spotify_version'], "pixie_version": PROFILE['pixie_version'],
+                      "source_commit": subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT.parent,text=True).strip(),
+                      "source_sha256_by_file": snapshot(), "changed_entries": changed,
+                      "preserved_plugin_sha256": plugins,
+                      "eevee_ui_artifact_sha256": hashlib.sha256(args.eevee_dylib.read_bytes()).hexdigest() if args.eevee_dylib else None,
+                      "phone_runtime_tested": False,
                       "spotify_uuid": UUID.hex(), "audio_imports": audio,
                       "native_limits": limits, "key_request_mode": key, "native_observation": native_trace,
                       "export_observation": export, "stale_signature_bytes_removed": stale_bytes, "relink_sources": retain_relink_sources(output),
                       "signing_metadata": signing_metadata,
-                      "eevee_native_download_reminder": reminder}, indent=2))
+                      "eevee_native_download_reminder": reminder}
+    output.with_suffix('.build.json').write_text(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == "__main__":

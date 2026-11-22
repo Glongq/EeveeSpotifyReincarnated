@@ -32,28 +32,37 @@ static NSString *string(NSArray *fields,unsigned field) {
     }
     return result;
 }
-static NSNumber *parseOffline(NSData *data,NSString *target) {
-    NSArray *fields=SAPProtoFields(data);BOOL album=validURI(target,@"album");NSNumber *result=nil;
+// Spotify 9.1.98 reports a track it never downloaded as state 0 (the proto3
+// default), where older builds reported 1 after a removal. Both mean "absent".
+static BOOL absentOfflineState(NSUInteger state) {return state<=1;}
+// An album is prepared track by track with the same Offline.AddDownload that a
+// single track uses: a native album context never starts for an unsaved album.
+static NSArray<NSString *> *offlineTargets(NSString *target,NSArray<NSDictionary *> *tracks) {
+    if(!validURI(target,@"album"))return @[target];
+    NSMutableOrderedSet *uris=[NSMutableOrderedSet orderedSet];
+    for(NSDictionary *track in tracks)if(validURI(track[@"uri"],@"track"))[uris addObject:track[@"uri"]];
+    return uris.array;
+}
+// Exact state of every requested track. A missing, duplicated or malformed
+// entry is ambiguous and refuses the whole answer.
+static NSDictionary *parseOffline(NSData *data,NSArray<NSString *> *targets) {
+    NSArray *fields=SAPProtoFields(data);NSMutableDictionary *result=[NSMutableDictionary dictionary];
     NSNumber *error=number(fields,2,0,NO);if(!error||error.unsignedLongLongValue)return nil;
     for(NSDictionary *f in fields) {
         if([f[@"number"]unsignedIntValue]!=1||[f[@"wire"]unsignedIntValue]!=2)continue;
-        NSArray *item=SAPProtoFields(f[@"value"]);
-        if(album)item=SAPProtoFields(SAPProtoData(item,1));
-        if(![string(item,1)isEqual:target])continue;
-        if(result)return nil;
-        NSNumber *state=number(item,2,0,NO);if(!state)return nil;
-        NSUInteger n=state.unsignedIntegerValue;
-        if(album ? !(n==0||n==2||n==3||n==4||n==5) : !(n>=1&&n<=6))return nil;
-        result=state;
+        NSArray *item=SAPProtoFields(f[@"value"]);NSString *uri=string(item,1);
+        if(![targets containsObject:uri])continue;
+        if(result[uri])return nil;
+        NSNumber *state=number(item,2,0,NO);if(!state||state.unsignedIntegerValue>6)return nil;
+        result[uri]=state;
     }
-    return result;
+    return result.count==targets.count?[result copy]:nil;
 }
-static void readOffline(NSString *target,void (^completion)(NSNumber *,NSString *)) {
-    BOOL album=validURI(target,@"album");NSMutableData *request=[NSMutableData data];
-    if(album){[request appendData:SAPProtoBytes(1,SAPProtoInteger(1,1))];[request appendData:SAPProtoBytes(3,[target dataUsingEncoding:NSUTF8StringEncoding])];}
-    else [request appendData:SAPProtoBytes(1,[target dataUsingEncoding:NSUTF8StringEncoding])];
-    SAPCallReadOnlyService(offlineService,album?@"GetContexts":@"GetItems",request,^(NSData *data,NSString *error){
-        onMain(^{NSNumber *state=error.length?nil:parseOffline(data,target);completion(state,state?nil:error?:@"Spotify did not return the exact download state. Temporary preparation was refused.");});
+static void readOffline(NSArray<NSString *> *targets,void (^completion)(NSDictionary *,NSString *)) {
+    NSMutableData *request=[NSMutableData data];
+    for(NSString *uri in targets)[request appendData:SAPProtoBytes(1,[uri dataUsingEncoding:NSUTF8StringEncoding])];
+    SAPCallReadOnlyService(offlineService,@"GetItems",request,^(NSData *data,NSString *error){
+        onMain(^{NSDictionary *states=error.length?nil:parseOffline(data,targets);completion(states,states?nil:error?:@"Spotify did not return the exact download state. Temporary preparation was refused.");});
     });
 }
 static NSDictionary *parseLibrary(NSData *data,NSArray<NSString *> *uris) {
@@ -80,14 +89,14 @@ static void readLibrary(NSArray<NSString *> *uris,void (^completion)(NSDictionar
 
 @interface SAPTemporaryOfflineExportState:NSObject
 @property(nonatomic,copy) NSString *target;
+@property(nonatomic,copy) NSArray<NSString *> *removable;
 @property(nonatomic,copy) NSArray<NSString *> *libraryURIs;
 @property(nonatomic,copy) NSDictionary *saved;
-@property(nonatomic) NSUInteger initialState;
 @property(nonatomic) BOOL cleanupStarted,cleanupFinished;
 @property(nonatomic,copy) NSString *cleanupError;
 @property(nonatomic,strong) NSMutableArray *completions;
 - (void)finish:(NSString *)error;
-- (void)removeDownload;
+- (void)removeDownload:(NSUInteger)index;
 - (void)verifyOffline:(NSUInteger)attempt;
 - (void)restoreLibrary;
 - (void)verifyLibrary:(NSUInteger)attempt;
@@ -98,19 +107,15 @@ static void readLibrary(NSArray<NSString *> *uris,void (^completion)(NSDictionar
     NSArray *callbacks=[self.completions copy];self.completions=nil;
     for(void (^completion)(NSString *) in callbacks)completion(error);
 }
-- (void)removeDownload {
-    if(validURI(self.target,@"album")) {
-        // Album contexts require the verified native entity adapter; the RPC
-        // RemoveDownload acknowledges an album without changing its context.
-        SAPResetEntityOffline(self.target,^(__unused BOOL attempted,__unused NSString *error){onMain(^{[self verifyOffline:0];});});
-    }else {
-        SAPCallOfflineCommandOnce(@"RemoveDownload",SAPProtoBytes(2,[self.target dataUsingEncoding:NSUTF8StringEncoding]),^(__unused NSData *data,__unused NSString *error){onMain(^{[self verifyOffline:0];});});
-    }
+- (void)removeDownload:(NSUInteger)index {
+    if(index>=self.removable.count){[self verifyOffline:0];return;}
+    SAPCallOfflineCommandOnce(@"RemoveDownload",SAPProtoBytes(2,[self.removable[index] dataUsingEncoding:NSUTF8StringEncoding]),^(__unused NSData *data,__unused NSString *error){onMain(^{[self removeDownload:index+1];});});
 }
 - (void)verifyOffline:(NSUInteger)attempt {
-    readOffline(self.target,^(NSNumber *state,__unused NSString *error){
-        NSUInteger absent=validURI(self.target,@"album")?0:1;
-        if(state&&state.unsignedIntegerValue==absent){[self restoreLibrary];return;}
+    readOffline(self.removable,^(NSDictionary *states,__unused NSString *error){
+        BOOL absent=states.count==self.removable.count;
+        for(NSNumber *state in states.allValues)if(!absentOfflineState(state.unsignedIntegerValue))absent=NO;
+        if(absent){[self restoreLibrary];return;}
         if(attempt+1>=maximumVerificationReads){[self finish:@"Spotify did not confirm removal of the temporary download. Saved library entries were left unchanged; cleanup is uncertain."];return;}
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self verifyOffline:attempt+1];});
     });
@@ -153,14 +158,17 @@ void SAPCaptureTemporaryOfflineExport(NSString *targetURI,NSArray<NSDictionary *
             [uris addObject:track[@"album_uri"]];
             if(uris.count>maximumLibraryURIs){completion(nil,@"Temporary sharing supports at most 64 distinct library identities. Choose a smaller selection.");return;}
         }
-        NSString *target=[targetURI copy];NSArray *libraryURIs=[uris.array copy];
-        readOffline(target,^(NSNumber *state,NSString *error){
-            if(!state){completion(nil,error);return;}
+        NSString *target=[targetURI copy];NSArray *libraryURIs=[uris.array copy];NSArray *targets=offlineTargets(target,resolvedTracks);
+        if(!targets.count){completion(nil,@"No exact track identities were resolved. Temporary preparation was refused.");return;}
+        readOffline(targets,^(NSDictionary *states,NSString *error){
+            if(!states){completion(nil,error);return;}
             readLibrary(libraryURIs,^(NSDictionary *saved,NSString *failure){
                 if(!saved){completion(nil,failure);return;}
+                NSMutableArray *removable=[NSMutableArray array];
+                for(NSString *uri in targets)if(absentOfflineState([states[uri]unsignedIntegerValue]))[removable addObject:uri];
                 SAPTemporaryOfflineExportState *owner=[SAPTemporaryOfflineExportState new];
-                owner.target=target;owner.libraryURIs=libraryURIs;owner.saved=saved;owner.initialState=state.unsignedIntegerValue;
-                completion(@{@"target_uri":target,@"initial_download_state":state,@"saved_entries":saved,@"_temporary_owner":owner},nil);
+                owner.target=target;owner.removable=removable;owner.libraryURIs=libraryURIs;owner.saved=saved;
+                completion(@{@"target_uri":target,@"initial_download_state":states[target]?:@0,@"initial_download_states":states,@"saved_entries":saved,@"_temporary_owner":owner},nil);
             });
         });
     });
@@ -174,8 +182,7 @@ void SAPCleanupTemporaryOfflineExport(NSDictionary *token,BOOL ourDownloadAccept
         if(owner.cleanupFinished){completion(owner.cleanupError);return;}
         if(!owner.completions)owner.completions=[NSMutableArray array];[owner.completions addObject:[completion copy]];
         if(owner.cleanupStarted)return;owner.cleanupStarted=YES;
-        NSUInteger absent=validURI(owner.target,@"album")?0:1;
-        if(!ourDownloadAccepted||owner.initialState!=absent){[owner finish:nil];return;}
-        [owner removeDownload];
+        if(!ourDownloadAccepted||!owner.removable.count){[owner finish:nil];return;}
+        [owner removeDownload:0];
     });
 }

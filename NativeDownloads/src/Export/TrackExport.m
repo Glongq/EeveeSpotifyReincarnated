@@ -41,7 +41,8 @@ static NSArray *fileIDs(NSArray *fields){NSMutableArray *ids=[NSMutableArray arr
 static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
     NSArray *envelope=SAPProtoFields(data),*item=SAPProtoFields(SAPProtoData(envelope,1));
     if(SAPProtoNumber(item,1,0))return nil;NSArray *track=SAPProtoFields(SAPProtoData(item,4));NSString *name=SAPProtoString(track,2);int64_t duration=SAPProtoSInt(track,7,0);NSArray *ids=fileIDs(track);
-    if(!name.length||!ids.count||duration<=0||duration>86400000)return nil;
+    // Spotify leaves the file list empty for a track that is not downloaded yet; beginWrite fetches it again afterwards.
+    if(!name.length||duration<=0||duration>86400000)return nil;
     NSArray *album=SAPProtoFields(SAPProtoData(track,3));
     return @{@"uri":uri,@"name":name,@"duration_ms":@(duration),@"files":ids,
         @"cover_image_uri":SAPExportAlbumCoverURI(album)?:@"",@"album_uri":SAPExportAlbumURI(album)?:@"",
@@ -59,7 +60,8 @@ static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
 @property(nonatomic,copy) void (^progress)(NSString *);
 @property(nonatomic,strong) dispatch_source_t poll;
 @property(nonatomic) BOOL preparationStarted,commandRequested,observingExisting,startObserved;
-@property(nonatomic) NSUInteger completeSamples;
+@property(nonatomic) NSUInteger completeSamples,progressMark;
+@property(nonatomic) NSTimeInterval lastProgress;
 @property(nonatomic) NSTimeInterval downloadStarted;
 @property(nonatomic,strong) dispatch_source_t deadline;
 @property(nonatomic) BOOL finished;
@@ -230,7 +232,7 @@ static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
         // The preceding GetItems reply established this exact transport. Mutations
         // use a single endpoint and are never replayed after an ambiguous result.
         self.commandRequested=YES;self.nativeAddInFlight=self.shareOnly;
-        if([self.targetURI hasPrefix:@"spotify:album:"]) {
+        if([self.targetURI hasPrefix:@"spotify:album:"]&&![self perTrackDownload]) {
             // Offline.AddDownload's wire message (DownloadRequest: uri +
             // music_video_uris) has no context field — it only actually queues
             // individual items. Sending it an album/context URI is acknowledged
@@ -253,25 +255,39 @@ static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
             });
             return;
         }
-        SAP_TRACE("export","native_download_requested",0,@{@"uri":self.targetURI,@"automatic_replay":@NO,@"source":@"ordinary_spotify_offline_AddDownload"});
-        SAPCallOfflineCommandOnce(@"AddDownload",SAPProtoBytes(2,[self.targetURI dataUsingEncoding:NSUTF8StringEncoding]),^(NSData *data,NSString *error){
-            NSArray *fields=data?SAPProtoFields(data):nil;
-            self.nativeAddInFlight=NO;self.temporaryOutcomeUnknown=fields==nil;
-            if(fields&&SAPProtoNumber(fields,1,0)==0)self.temporaryAddAccepted=YES;
-            if(self.finished){[self completeTemporaryFinish];return;}
-            if(!fields){[self finish:nil error:error?:@"Spotify did not confirm the download request. It was not sent again."];return;}
-            uint64_t code=SAPProtoNumber(fields,1,0);
-            SAP_TRACE("export","native_download_reply",0,@{@"uri":self.targetURI,@"code":@(code),@"download_completion_verified":@NO});
-            if(code){[self finish:nil error:[NSString stringWithFormat:@"Spotify rejected the download request (code %llu). No audio was exported.",code]];return;}
-            [self status:@"Spotify is downloading the audio for export…"];
-            [self schedulePoll];
-        });
+        // Tracks Spotify already has (or is already fetching) are left alone; an album
+        // share asks for each missing track exactly like a single-track share does.
+        NSMutableArray<NSString *> *pending=[NSMutableArray array];
+        if([self perTrackDownload]) {
+            NSDictionary *states=self.temporaryToken[@"initial_download_states"];
+            for(NSDictionary *track in self.resolved){NSString *uri=track[@"uri"];if([uri isKindOfClass:NSString.class]&&states[uri]&&[states[uri]unsignedIntegerValue]<=1&&![pending containsObject:uri])[pending addObject:uri];}
+            if(!pending.count){self.nativeAddInFlight=NO;self.observingExisting=YES;[self schedulePoll];return;}
+        }else [pending addObject:self.targetURI];
+        SAP_TRACE("export","native_download_requested",0,@{@"uri":self.targetURI,@"automatic_replay":@NO,@"source":@"ordinary_spotify_offline_AddDownload",@"track_count":@(pending.count)});
+        [self addDownloads:pending index:0];
+    });
+}
+- (BOOL)perTrackDownload {return self.shareOnly&&[self.targetURI hasPrefix:@"spotify:album:"];}
+- (void)addDownloads:(NSArray<NSString *> *)uris index:(NSUInteger)index {
+    if(self.finished){self.nativeAddInFlight=NO;[self completeTemporaryFinish];return;}
+    if(index>=uris.count){self.nativeAddInFlight=NO;[self status:@"Spotify is downloading the audio for export…"];[self schedulePoll];return;}
+    NSString *uri=uris[index];
+    SAPCallOfflineCommandOnce(@"AddDownload",SAPProtoBytes(2,[uri dataUsingEncoding:NSUTF8StringEncoding]),^(NSData *data,NSString *error){
+        NSArray *fields=data?SAPProtoFields(data):nil;
+        if(!fields)self.temporaryOutcomeUnknown=YES;
+        if(fields&&SAPProtoNumber(fields,1,0)==0)self.temporaryAddAccepted=YES;
+        if(self.finished){self.nativeAddInFlight=NO;[self completeTemporaryFinish];return;}
+        if(!fields){self.nativeAddInFlight=NO;[self finish:nil error:error?:@"Spotify did not confirm the download request. It was not sent again."];return;}
+        uint64_t code=SAPProtoNumber(fields,1,0);
+        SAP_TRACE("export","native_download_reply",0,@{@"uri":uri,@"code":@(code),@"download_completion_verified":@NO});
+        if(code){self.nativeAddInFlight=NO;[self finish:nil error:[NSString stringWithFormat:@"Spotify rejected the download request (code %llu). No audio was exported.",code]];return;}
+        [self addDownloads:uris index:index+1];
     });
 }
 - (void)pollNativeDownload {
     if(self.finished)return;
     if(self.poll){dispatch_source_cancel(self.poll);self.poll=nil;}
-    if([self.targetURI hasPrefix:@"spotify:album:"]){[self pollNativeAlbumContext];return;}
+    if([self.targetURI hasPrefix:@"spotify:album:"]&&![self perTrackDownload]){[self pollNativeAlbumContext];return;}
     NSMutableData *request=[NSMutableData data];NSMutableDictionary *wanted=[NSMutableDictionary dictionary];
     for(NSDictionary *track in self.resolved) {
         NSString *uri=track[@"uri"];if(![uri isKindOfClass:NSString.class])continue;
@@ -282,19 +298,39 @@ static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
         if(self.finished)return;
         NSArray *fields=data?SAPProtoFields(data):nil;
         if(!fields){[self finish:nil error:error?:@"Spotify did not return the download state."];return;}
-        NSMutableSet *seen=[NSMutableSet set];NSUInteger complete=0,active=0;
+        NSMutableSet *seen=[NSMutableSet set],*completed=[NSMutableSet set];NSUInteger complete=0,active=0;
         NSString *failure=nil;
         for(NSDictionary *field in fields) {
             if([field[@"number"]unsignedIntValue]!=1 || [field[@"wire"]unsignedIntValue]!=2)continue;
             NSArray *item=SAPProtoFields(field[@"value"]);NSString *uri=SAPProtoString(item,1);
             if(!wanted[uri] || [seen containsObject:uri])continue;
             [seen addObject:uri];uint64_t state=SAPProtoNumber(item,2,0);
-            if(state==3){complete++;self.startObserved=YES;}
+            if(state==3){complete++;[completed addObject:uri];self.startObserved=YES;}
             if(state==4 || state==5 || state==6){active++;self.startObserved=YES;}
-            if(state==7 || (state==1 && (self.commandRequested || self.observingExisting) && NSDate.timeIntervalSinceReferenceDate-self.downloadStarted>30))
+            if(state==7 || (![self perTrackDownload] && state==1 && (self.commandRequested || self.observingExisting) && NSDate.timeIntervalSinceReferenceDate-self.downloadStarted>30))
                 failure=[NSString stringWithFormat:@"Spotify reported download state %llu for %@. No audio was exported.",state,wanted[uri][@"name"]?:uri];
         }
         SAP_TRACE("export","native_download_state",0,@{@"uri":self.targetURI,@"complete_tracks":@(complete),@"total_tracks":@(wanted.count),@"in_progress_tracks":@(active),@"observed_tracks":@(seen.count),@"download_command_requested":@(self.commandRequested)});
+        if([self perTrackDownload]&&(self.commandRequested||self.observingExisting)) {
+            // Spotify fetches the tracks one after another, so a queued track may wait. Only
+            // a download that has shown no progress at all for a long time is a failure.
+            NSTimeInterval now=NSDate.timeIntervalSinceReferenceDate;
+            if(active||complete>self.progressMark||!self.lastProgress){self.lastProgress=now;self.progressMark=MAX(self.progressMark,complete);}
+            if(!failure&&complete<wanted.count) {
+                // Spotify takes some tracks but never queues them (not available to this account).
+                // Once everything else is finished, export what is there and name what is missing.
+                if(complete>0&&!active&&now-self.lastProgress>60) {
+                    NSMutableArray *kept=[NSMutableArray array],*skipped=[NSMutableArray array];
+                    for(NSDictionary *track in self.resolved)if([completed containsObject:track[@"uri"]])[kept addObject:track];else [skipped addObject:track[@"name"]?:track[@"uri"]];
+                    for(NSUInteger i=0;i<kept.count;i++){NSMutableDictionary *track=[kept[i]mutableCopy];track[@"album_skipped"]=skipped;kept[i]=track;}
+                    SAP_TRACE("export","album_tracks_skipped",0,@{@"skipped":@(skipped.count),@"exported":@(kept.count)});
+                    self.resolved=kept;self.completeSamples=0;
+                    [self status:[NSString stringWithFormat:@"Spotify cannot download %lu track(s); exporting the rest…",(unsigned long)skipped.count]];
+                    [self schedulePoll];return;
+                }
+                if(now-self.lastProgress>60)failure=[NSString stringWithFormat:@"Spotify stopped downloading the album tracks (%lu of %lu ready). No audio was exported.",(unsigned long)complete,(unsigned long)wanted.count];
+            }
+        }
         if(failure){[self finish:nil error:failure];return;}
         if(complete==wanted.count) {
             if(++self.completeSamples>=2){self.confirmedDownloadedURIs=[NSSet setWithArray:wanted.allKeys];[self status:@"Spotify reports all tracks downloaded. Exporting audio…"];[self beginWrite];return;}
@@ -368,7 +404,22 @@ static NSDictionary *trackMetadata(NSData *data,NSString *uri) {
 - (void)beginWrite {
     if(self.finished)return;
     if(self.poll){dispatch_source_cancel(self.poll);self.poll=nil;}
-    [self writeFiles];
+    [self refreshMissingFilesThen:^{[self writeFiles];}];
+}
+// A track resolved before its download has no audio file ids. Once Spotify has
+// downloaded it, ask for its metadata again and fill the ids in.
+- (void)refreshMissingFilesThen:(dispatch_block_t)next {
+    NSUInteger index=NSNotFound;
+    for(NSUInteger i=0;i<self.resolved.count;i++)if(![self.resolved[i][@"files"]count]){index=i;break;}
+    if(index==NSNotFound){next();return;}
+    NSString *uri=self.resolved[index][@"uri"];
+    SAPCallReadOnlyService(@"spotify.metadata_esperanto.proto.ClassicMetadataService",@"GetEntity",SAPProtoBytes(1,[uri dataUsingEncoding:NSUTF8StringEncoding]),^(NSData *response,NSString *error){
+        if(self.finished)return;
+        NSDictionary *track=response?trackMetadata(response,uri):nil;
+        if(![track[@"files"]count]){[self finish:nil error:error?:[NSString stringWithFormat:@"Spotify has no audio files for %@ even after the download.",self.resolved[index][@"name"]?:uri]];return;}
+        NSMutableDictionary *merged=[self.resolved[index]mutableCopy];merged[@"files"]=track[@"files"];
+        self.resolved[index]=merged;[self refreshMissingFilesThen:next];
+    });
 }
 - (void)requestKeyRefresh {
     if(self.finished)return;
@@ -586,6 +637,14 @@ void SAPExportCurrentAudioWithKeyRefresh(BOOL album,void (^progress)(NSString *)
 static void SAPStartAudioExportWithOptions(NSString *uri,NSString *name,BOOL shareOnly,NSString *format,BOOL deferConversion,void (^progress)(NSString *),void (^confirmRefresh)(NSUInteger,void (^)(BOOL)),void (^completion)(NSArray<NSURL *> *,NSString *)) {
     NSCAssert(NSThread.isMainThread,@"Export must be requested from the main thread");
     BOOL album=[uri hasPrefix:@"spotify:album:"];
+    static NSUInteger cleanupWaits;
+    if(atomic_load(&exporting)&&activeJob.finished&&cleanupWaits<100) {
+        // A cancelled job gives Spotify's downloads back before it releases the exporter; wait for that.
+        cleanupWaits++;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{SAPStartAudioExportWithOptions(uri,name,shareOnly,format,deferConversion,progress,confirmRefresh,completion);});
+        return;
+    }
+    cleanupWaits=0;
     if(atomic_exchange(&exporting,true)){if(completion)completion(nil,@"Another export is already running.");return;}
     SAP_TRACE("export","audio_export_requested",0,@{@"album":@(album),@"native_download_preparation":@YES,@"direct_cache_write_requested":@NO});
     SAPExportJob *job=[SAPExportJob new];activeJob=job;job.completion=completion;job.progress=progress;job.confirmRefresh=confirmRefresh;job.targetURI=uri;job.resolved=[NSMutableArray array];job.name=name?:@"Track";job.format=format?:SAPAudioExportFormat();job.deferM4AConversion=deferConversion;job.shareOnly=shareOnly;

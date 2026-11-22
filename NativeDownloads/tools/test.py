@@ -36,6 +36,7 @@ class Fixture:
 # basename resolution allows the production tree to be reorganized without
 # copying it into the tests or relying on directory-wide source globs.
 FIXTURES = (
+    Fixture("native_cache_namespace", "export", ("native_cache_namespace.m",)),
     Fixture("page_contract", "library", ("PixiePageController.m", "page_contract.m"), scenarios=tuple((s,) for s in ("swift", "legacy", "both", "late", "unsupported", "lookalike"))),
     Fixture("progress_animation", "library", ("progress_animation.m",), frameworks=("Foundation", "QuartzCore")),
     Fixture("ogg_inspection", "export", ("OggInspection.c","OggExport.c","ogg_inspection.m"), scenarios=((str(ROOT / "tests/fixtures/export-tone-10s.ogg"),),)),
@@ -50,9 +51,10 @@ FIXTURES = (
     Fixture("offline_library_refresh", "library", ("OfflineLibraryProgress.m", "offline_library_refresh.m")),
     Fixture("journal_poll_scope", "diagnostics", ("journal_poll_scope.m",)),
     Fixture("offline_library_catalog", "library", ("OfflineLibraryCatalog.m", "WireProto.m", "offline_library_catalog.m")),
-    Fixture("offline_catalog_transport", "transport", ("OfflineLibraryCatalog.m", "SpotifyTransportRegistry.m", "SpotifyServiceCalls.m", "SpotifyTransportHooks.m", "WireProto.m", "offline_catalog_transport.m"), scenarios=tuple((s,) for s in ("candidate_churn", "service_route", "stream_route", "method_route", "slow_route", "cancel_reopen", "cancel_late_route", "service_isolation", "invalid_proof", "weak_route", "bridge_last", "late_reply", "cancel_before_send", "exhaustion", "stream_once", "persisted_route", "persisted_invalid"))),
+    # Allow CI scheduling headroom around this fixture's 25 ms mock responses.
+    Fixture("offline_catalog_transport", "transport", ("OfflineLibraryCatalog.m", "SpotifyTransportRegistry.m", "SpotifyServiceCalls.m", "SpotifyTransportHooks.m", "WireProto.m", "offline_catalog_transport.m"), scenarios=tuple((s,) for s in ("candidate_churn", "service_route", "stream_route", "method_route", "slow_route", "cancel_reopen", "cancel_late_route", "service_isolation", "invalid_proof", "weak_route", "bridge_last", "late_reply", "cancel_before_send", "exhaustion", "stream_once", "persisted_route", "persisted_invalid")), defines=("SAP_TEST_SERVICE_TIMEOUT_SECONDS=0.2",)),
     Fixture("spotify_cache_clear", "library", ("SpotifyCacheClear.m", "WireProto.m", "spotify_cache_clear.m"), scenarios=tuple((s,) for s in ("normal", "stats_unreadable", "error", "not_invoked", "busy"))),
-    Fixture("offline_library_delete", "library", ("OfflineLibraryDelete.m", "AlbumMetadata.m", "WireProto.m", "offline_library_delete.m")),
+    Fixture("offline_library_delete", "library", ("OfflineLibraryDelete.m", "WireProto.m", "offline_library_delete.m")),
     Fixture("offline_library_export", "library", ("OfflineLibraryExport.m", "offline_library_export.m")),
     Fixture("artist_catalog_append", "catalog", ("artist_catalog_append.m",)),
     Fixture("export_refresh_policy", "export", ("export_refresh_policy.m",)),
@@ -70,7 +72,6 @@ FIXTURES = (
     Fixture("export_storage", "export", ("CacheStorageKey.m", "cache_storage_key.m")),
     Fixture("export_workflow", "export", ("export_native_workflow.m", "WireProto.m", "NativeCacheMap.m", "CacheStorageKey.m", "CacheEnvelope.c", "OggExport.c", "OggArtwork.c", "ExportArtworkMetadata.m", "ExportLibrary.m", "MediaDecode.c")),
     Fixture("audio_probe", "audio", ("AudioProbe.c", "test_probe.c"), diagnostics=True, frameworks=("Foundation", "AudioToolbox")),
-    Fixture("av_hooks", "audio", ("AudioProbe.c", "AVAudioHooks.m", "av_hooks.m"), diagnostics=True, frameworks=("Foundation", "AudioToolbox", "AVFoundation", "CoreMedia")),
     Fixture("offline_flags", "config", ("OfflineFlags.m", "offline_flags.m"), diagnostics=True),
     Fixture("offline_config", "config", ("OfflineConfig.m", "offline_config.m"), diagnostics=True),
     Fixture("download_evidence", "config", ("download_evidence.m",)),
@@ -86,14 +87,11 @@ FIXTURES = (
     Fixture("track_download", "transport", ("PlayerTrace.m", "WireProto.m", "track_download.m"), groups=("manual_download",), diagnostics=True),
     Fixture("artist_session", "session", ("WireProto.m", "artist_session.m"), groups=("artist_session",)),
     Fixture("artist_metadata", "catalog", ("ArtistMetadata.m", "WireProto.m", "artist_metadata.m")),
-    Fixture("album_metadata", "catalog", ("AlbumMetadata.m", "WireProto.m", "album_metadata.m")),
     Fixture("playlist_downloads", "playlists", ("WireProto.m", "playlist_downloads.m"), groups=("playlists",)),
     Fixture("playlist_streaming", "playlists", ("WireProto.m", "playlist_streaming.m"), groups=("playlists",)),
     Fixture("download_compatibility", "devices", ("OfflineCompatibilityChecks.m", "WireProto.m", "download_compatibility.m"), diagnostics=True),
     Fixture("offline_devices", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices.m"), diagnostics=True),
     Fixture("offline_devices_eevee_auth", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices.m"), diagnostics=True, defines=("SAP_REAL_EEVEE_AUTH",)),
-    Fixture("offline_devices_vitrine", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices_vitrine.m"), diagnostics=True),
-    Fixture("offline_devices_vitrine_auth", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices_vitrine.m"), diagnostics=True, defines=("SAP_VITRINE_AUTH_ASYNC",)),
 )
 GROUP_FALLBACKS = {
     "manual_download": ("ManualTrackDownload.m",),
@@ -205,7 +203,7 @@ def run_fixture(test: Fixture, build: Path, sanitize: bool):
     with (folder / "output.log").open("w") as log:
         if "SAP_REAL_EEVEE_AUTH" in test.defines:
             bridge = folder / "libEeveeAuthenticationFixture.dylib"
-            execute(("xcrun", "swiftc", "-parse-as-library", "-emit-library", "-module-name", "PixieAuthenticationFixture", PROJECT / "Sources/EeveeSpotify/SpriteAuthentication.swift", source("eevee_auth_headers.swift"), "-o", bridge), log, env)
+            execute(("xcrun", "swiftc", "-parse-as-library", "-emit-library", "-module-name", "PixieAuthenticationFixture", PROJECT / "Sources/EeveeSpotify/PixieAuthentication.swift", source("eevee_auth_headers.swift"), "-o", bridge), log, env)
             command.append(bridge)
         execute(command, log, env)
         for args in test.scenarios:
@@ -215,7 +213,7 @@ def run_fixture(test: Fixture, build: Path, sanitize: bool):
 def run_script(name: str, build: Path):
     folder = build / name
     folder.mkdir(parents=True)
-    paths = {"export_artwork_cache": ROOT / "tools/test_export_artwork_cache.py", "track_export": ROOT / "tools/test_audio_export.py", "m4a_codec": ROOT / "tools/test_m4a_export.py", "offline_library_package": ROOT / "tests/test_offline_library_package.py", "export_patch": ROOT / "tests/export_patch.py", "native_restrictions": ROOT / "tools/test_native_restrictions.py", "native_trace_abi": ROOT / "tests/native_trace_patch.py", "signing_metadata": ROOT / "tests/signing_metadata.py", "sideload_dependencies": ROOT / "tests/sideload_dependencies.py"}
+    paths = {"export_artwork_cache": ROOT / "tools/test_export_artwork_cache.py", "track_export": ROOT / "tools/test_audio_export.py", "m4a_codec": ROOT / "tools/test_m4a_export.py", "offline_library_package": ROOT / "tests/test_offline_library_package.py", "export_patch": ROOT / "tests/export_patch.py", "native_restrictions": ROOT / "tools/test_native_restrictions.py", "native_trace_abi": ROOT / "tests/native_trace_patch.py", "signing_metadata": ROOT / "tests/signing_metadata.py"}
     env = dict(os.environ, PIXIE_TEST_BUILD_DIR=str(folder), PYTHONDONTWRITEBYTECODE="1")
     with (folder / "output.log").open("w") as log:
         execute((sys.executable, paths[name]), log, env)
@@ -230,7 +228,7 @@ def main():
     parser.add_argument("--no-sanitize", action="store_true", help="Disable AddressSanitizer/UBSan for a diagnostic run")
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
-    scripted = {"export_artwork_cache": "export", "track_export": "export", "m4a_codec": "export", "offline_library_package": "library", "export_patch": "packaging", "native_restrictions": "packaging", "native_trace_abi": "packaging", "signing_metadata": "packaging", "sideload_dependencies": "packaging"}
+    scripted = {"export_artwork_cache": "export", "track_export": "export", "m4a_codec": "export", "offline_library_package": "library", "export_patch": "packaging", "native_restrictions": "packaging", "native_trace_abi": "packaging", "signing_metadata": "packaging"}
     jobs = [(f.name, f.suite, f) for f in FIXTURES] + [(n, s, None) for n, s in scripted.items()]
     all_names = {n for n, _, _ in jobs}
     if args.fixture and set(args.fixture) - all_names:
@@ -267,7 +265,7 @@ def main():
         print(f"{result['status']}: {suite}/{name}" + (f" — {result['reason']}" if "reason" in result else ""), flush=True)
     counts = {status: sum(r["status"] == status for r in results) for status in ("PASS", "SKIP", "FAIL")}
     from pixie_target import PROFILE
-    report = {"host": platform.platform(), "production_target": f"Eevee 7.0.0 / Spotify 9.1.92 / Pixie {PROFILE['pixie_version']}", "sanitizers": not args.no_sanitize, "device_runtime_tested": False, "counts": counts, "results": results}
+    report = {"host": platform.platform(), "production_target": f"Eevee {PROFILE['eevee_version']} / Spotify {PROFILE['spotify_version']} / Pixie {PROFILE['pixie_version']}", "sanitizers": not args.no_sanitize, "device_runtime_tested": False, "counts": counts, "results": results}
     (build / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"Results: {counts}; {build / 'results.json'}", flush=True)
     return 1 if counts["FAIL"] or not counts["PASS"] else 0

@@ -87,7 +87,8 @@ int main(void){@autoreleasepool {
     reset(1);token=capture(track,&error);offlineState=3;membership[track]=@YES;stuckLibrary=YES;mutationTimeout=YES;
     assert(cleanup(token,YES).length);assert(offlineRemovals==1&&collectionRemovals==1);assert(cleanup(token,YES).length);assert(collectionRemovals==1);
     reset(1);missingOffline=YES;assert(!capture(track,&error)&&error.length);assert(!offlineRemovals&&!collectionRemovals);
-    reset(0);assert(!capture(track,&error)&&error.length);assert(!offlineRemovals&&!collectionRemovals);
+    reset(0);token=capture(track,&error);assert(token&&!error);offlineState=3;membership[track]=@YES;assert(!cleanup(token,YES));assert(offlineRemovals==1);
+    reset(7);assert(!capture(track,&error)&&error.length);assert(!offlineRemovals&&!collectionRemovals);
     reset(1);badStatus=YES;assert(!capture(track,&error)&&error.length);assert(!offlineRemovals&&!collectionRemovals);
     reset(1);token=capture(track,&error);offlineState=3;membership[track]=@YES;missingMembership=YES;
     assert(cleanup(token,YES).length);assert(offlineRemovals==1&&!collectionRemovals);
@@ -96,10 +97,13 @@ int main(void){@autoreleasepool {
     for(unsigned i=0;i<65;i++)[many addObject:@{@"uri":track,@"album_uri":[NSString stringWithFormat:@"spotify:album:%022u",i]}];
     SAPCaptureTemporaryOfflineExport(track,many,^(NSDictionary *t,NSString *e){oversizedToken=t;boundedError=e;boundedDone=YES;});
     waitUntil(^BOOL{return boundedDone;});assert(!oversizedToken&&boundedError.length&&containsReads==0);
-    reset(0);omitDefaultContext=YES;token=capture(album,&error);assert(token&&!error);offlineState=3;membership[album]=@YES;
-    assert(!cleanup(token,YES));assert(nativeRemovals==1&&!offlineRemovals&&collectionRemovals==1&&![membership[album]boolValue]);
+    // An album is prepared and restored track by track with the single-track commands.
+    reset(0);token=capture(album,&error);assert(token&&!error);offlineState=3;membership[album]=@YES;
+    assert(!cleanup(token,YES));assert(offlineRemovals==1&&!nativeRemovals&&collectionRemovals==1&&![membership[album]boolValue]);
     reset(0);token=capture(album,&error);assert(token&&!error);
-    // Cancellation can precede visibility of an accepted album pin.
-    assert(!cleanup(token,YES));assert(nativeRemovals==1&&!offlineRemovals&&!collectionRemovals);
+    // Cancellation can precede the first visible state of an accepted download.
+    assert(!cleanup(token,YES));assert(offlineRemovals==1&&!nativeRemovals&&!collectionRemovals);
+    // A track Spotify already had is never removed.
+    reset(3);token=capture(album,&error);assert(token&&!error);assert(!cleanup(token,YES));assert(!offlineRemovals&&!nativeRemovals&&!collectionRemovals);
     puts("PASS temporary baseline, existing state preservation, conditional restoration, no replay and truthful verification");
 }return 0;}

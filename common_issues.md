@@ -1,37 +1,34 @@
-# Common Issues — Glongq's Native Downloads Fork
+On this page, you'll find a detailed FAQ covering various topics related to EeveeSpotify, answers to common questions, and more.
 
-> [!IMPORTANT]
-> This FAQ covers the **unofficial Glongq fork**. For the original project,
-> see the [upstream FAQ](https://github.com/SideloadLabs/EeveeSpotifyReincarnated/blob/Master/common_issues.md).
-> Upstream installation and version instructions are not compatibility claims for this fork.
+# Versions and Support
 
-## Versions and sideloading installation
+EeveeSpotify currently supports Spotify version **9.1.68** (the latest version compatible with iOS 16.1+). 
 
-**Native Downloads v4** targets **Spotify 9.1.88 / EeveeSpotify 7.0.0**
-with the guarded ARM64 binary documented in [the compatibility guide](NativeDownloads/README.md).
+If you are jailbroken, install the latest .deb from the [releases page](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/releases), along with the latest Spotify from the App Store. After installation, open the EeveeSpotify settings (accessible from your Spotify profile settings) and reset data so it will properly patch Premium features.
 
-| Method | Install | Native downloads | Offline playback |
-| --- | --- | --- | --- |
-| **SideStore** | Verified | Verified | Verified |
-| **LiveContainer** | Verified | Verified | Verified |
+For non-jailbroken devices, use the patched IPA files available in the releases. You can install these using:
+- **TrollStore** (recommended for iOS 14-16.6.1, 17.0)
+- **Sideloadly** (7-day signing)
+- **AltStore** (7-day signing)
+- **Signing services** with paid certificates, such as [**FlareStore**](https://flarestore.app)
 
-Tests were performed by the maintainer on iPhone 15 Pro Max / iOS 27.0.1.
-Detailed native diagnostics were collected during the LiveContainer tests.
-A matching Spotify version label alone does not guarantee the same binary.
+EeveeSpotify only supports iOS and iPadOS and is not planned to be supported on other platforms. You can sideload the iPadOS version on an Apple Silicon Mac, though.
 
-This source repository has no public modified Spotify IPA release.
-To make a local build, follow [NativeDownloads/README.md](NativeDownloads/README.md)
-or run the [native-download workflow](.github/workflows/native-downloads.yml)
-with a compatible user-supplied base IPA. The workflow uploads temporary artifacts
-and does not automatically publish a GitHub Release.
+New versions are released when compatible Spotify updates become available. Check the [releases page](https://github.com/jaydenjcpy/EeveeSpotifyReincarnated/releases) for the latest builds, or join the [Telegram channel](https://t.me/compiledipas) for IPA downloads and updates.
+
+## CarPlay, Siri and Dynamic Island/Lockscreen
+
+To use CarPlay, you need to either install the tweak on a jailbroken device, use TrollStore, or have a paid certificate with a CarPlay entitlement.
+
+To use Siri, you need to either install the tweak on a jailbroken device, use TrollStore, or have a paid certificate with a Siri entitlement.
+
+If you're using a paid certificate, to navigate to a song from the lock screen, control center, or Dynamic Island, and to use Spatial Audio or Siri, change the app and bundle identifiers to match your provisioning profile.
 
 # Feature Requests
 
-For requests concerning this fork's native-download extension, open an issue
-or a pull request in **Glongq/EeveeSpotifyReincarnated**. For features maintained
-by upstream, consult the original project's contribution policy.
+EeveeSpotify does not accept free feature requests. If you need something, feel free to implement it yourself, or submit a pull request if you think others may find it useful. If you're willing to pay for a feature, open an issue to discuss further opportunities.
 
-Other Premium features such as very high audio quality and AI DJ remain outside this fork's download implementation. Cellular-only downloading has not been independently validated; do not infer support from successful Wi-Fi tests.
+Note that many Premium features are server-sided and will never work without a Premium subscription (e.g., very high quality audio, AI DJ, offline downloads on mobile data).
 
 # Troubleshooting & Issues
 
@@ -74,30 +71,7 @@ This issue is solely related to your account region. Do not enable "Overwrite Co
 
 ## Downloading
 
-This fork includes **experimental native downloads**, based on the verified v4
-runtime. Use Spotify's regular album/playlist Download button, or open
-**EeveeSpotify → Track downloads** for the current-track action and diagnostics.
-
-- The checked target is Spotify 9.1.88 / EeveeSpotify 7.0.0 with the exact
-  Mach-O UUID in [the compatibility guide](NativeDownloads/README.md).
-  The maintainer confirmed native downloads and offline playback with both
-  **SideStore and LiveContainer** on the tested device.
-- Content is stored by Spotify for offline playback. Separate MP3/WAV export is
-  not part of this release; WAV capture is disabled.
-- A request being accepted or a green icon alone is not an independent playback
-  test. Use the native state check and, when appropriate, verify with networking off.
-- Historical errors can remain after a later successful download. Diagnostic
-  read requests can still time out; this is a documented remaining limitation.
-- Automatic per-track playback is not required by the download implementation.
-- Long-term licence renewal and cellular-only downloads have not been verified.
-
-For problems, enable diagnostics, reproduce the issue, and submit the relevant
-redacted observations to **Glongq/EeveeSpotifyReincarnated** using the Native
-Download issue form. This implementation is independent of upstream's download
-policy; do not send its support issues to upstream.
-
-The upstream "Download local playlist" action refers to local files from a PC
-on the same Wi-Fi network. It is a separate feature.
+Downloads work now. If issues happen with downloading do a clean install. (Downloads don't work if you're jailbroken and install the debs)
 
 ## Spotify Connect
 

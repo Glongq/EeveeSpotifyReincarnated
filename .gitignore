@@ -42,15 +42,3 @@ __pycache__/
 .website/
 .github/copilot-instructions.md
 scripts/spotify_symbol_diff.py
-
-# Native download extension build products and device reports
-NativeDownloads/build/
-NativeDownloads/outputs/
-*.dylib
-SpotifyAudioProbe*.json
-SpotifyAudioProbe*.txt
-
-# Isolated 9.1.92 port artifacts
-/outputs/
-/research/
-/.analysis-venv/

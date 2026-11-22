@@ -9,7 +9,7 @@
 static atomic_uint_fast64_t requests, patched, unchanged, oversized, failedTasks, emptyTasks;
 static atomic_uint_fast64_t cachedBodies, cachedChanges, responses304;
 static atomic_uint_fast64_t reentrantBodies,reentrantChanges;
-// Vitrine delivers a complete synthesized body synchronously from its response
+// The host tweak delivers a complete synthesized body synchronously from its response
 // and completion handlers. Re-buffering that delivery would consume the body
 // without ever passing it to Spotify. This marks only the current task/call.
 static _Thread_local const void *forwardingTask;
@@ -96,7 +96,8 @@ static NSDictionary *observedFlags(NSData *data,BOOL bootstrap) {
     }
     return @{@"recognized":@YES,@"attributes":out};
 }
-NSData *SAPRewriteOfflineConfig(NSData *data, BOOL bootstrap) {
+// Exported so Eevee can apply the same rewrite to the customize copy it saves and replays.
+__attribute__((visibility("default"))) NSData *SAPRewriteOfflineConfig(NSData *data, BOOL bootstrap) {
     // Account.pb.swift: Bootstrap[2][1][1].Customize[1].Ucs[3].Attributes(map[1]).
     const unsigned bootstrapPath[] = {2, 1, 1, 1, 3}, customizePath[] = {1, 3};
     BOOL found = NO;

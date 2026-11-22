@@ -21,4 +21,10 @@ typedef NS_ENUM(NSInteger, SAPSettingsAction) {
 + (void)enableOfflineOnCurrentDevice:(void (^)(NSDictionary *,NSString *))completion;
 @end
 void SAPInstallDownloadSettings(void);
+@class UIViewController;
+// The Pixie download manager page, for hosts that list it in their own settings.
+UIViewController *SAPCreateDownloadsSettings(void);
 NSDictionary *SAPDownloadSettingsInstallReport(void);
+
+// Lightweight bootstrap status for Eevee startup logging; no polling or native reads.
+NSDictionary *SAPStartupReport(void);

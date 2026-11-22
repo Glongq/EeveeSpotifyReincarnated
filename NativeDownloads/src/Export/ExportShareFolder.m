@@ -36,6 +36,11 @@ NSURL *SAPCreateAudioShareFolder(NSArray<NSURL *> *files,NSString *name,NSString
         }
         if(link(file.path.fileSystemRepresentation,destination.path.fileSystemRepresentation)){if(error)*error=@"Could not prepare the album folder for sharing.";return nil;}
     }
+    NSArray *skipped=SAPAttachedExportArtwork(files.firstObject)[@"album_skipped"];
+    if([skipped count]) {
+        NSString *note=[@"Spotify could not download these tracks, so they are not included:\n" stringByAppendingString:[skipped componentsJoinedByString:@"\n"]];
+        [note writeToURL:[folder URLByAppendingPathComponent:@"Skipped tracks.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
     objc_setAssociatedObject(folder,&shareLeaseKey,lease,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return folder;
 }

@@ -4,7 +4,17 @@ extension URL {
     var isLyrics: Bool {
         self.path.contains("color-lyrics/v2")
     }
+
+    // Carries the account attributes the 9.2 core enforces - see NebulaAttributes.
+    var isNebulaAttributes: Bool {
+        self.path.contains("nebula/v1/configuration/attributes")
+    }
     
+    // The 9.2 remote configuration, signed in - see rewriteRemoteConfigurationData.
+    var isRemoteConfiguration: Bool {
+        self.path.contains("remote-config-resolver/v3/configuration")
+    }
+
     var isPlanOverview: Bool {
         self.path.contains("GetPlanOverview")
     }
@@ -78,7 +88,7 @@ extension URL {
         }
         
         // Block all other spclient /ads/* endpoints
-        if path.contains("/ads/") {
+        if path.contains("/ads/") || path.hasSuffix("/ads") {
             return true
         }
         

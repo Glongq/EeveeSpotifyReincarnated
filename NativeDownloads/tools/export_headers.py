@@ -78,11 +78,28 @@ def sites_header():
         if not _is_bl(_word(owner_code, offset//4 - 1)):
             raise ValueError('Cache owner return address does not follow a call')
     body_address, body = patch_export.window('cache_key_body')
+    # Derive the namespace member from the actual loads, rather than retaining
+    # the 9.1.92 +0x230 layout on a different Spotify build.
+    first = _word(body, 0)
+    if first & 0xffc003ff == 0x3dc00000:  # ldr q0,[x0,#imm*16]
+        namespace = ((first >> 10) & 0xfff) * 16
+        if _word(body, 2) != 0xb9400008 | ((namespace + 16) // 4 << 10):
+            raise ValueError('Cache namespace tail load differs')
+    elif first & 0xffc003ff == 0xb9400008 and len(body) >= 28:
+        add = _word(body, 2)  # add x8,x0,#member; ldr q0,[x8]
+        if add & 0xffc003ff != 0x91000008 or _word(body, 3) != 0x3dc00100:
+            raise ValueError('Cache namespace vector load differs')
+        namespace = (add >> 10) & 0xfff
+        if ((first >> 10) & 0xfff) * 4 != namespace + 16:
+            raise ValueError('Cache namespace member is not contiguous')
+    else:
+        raise ValueError('Unsupported cache namespace load layout')
     context = patch_export.point('MediaContext')[1]
     return '\n'.join([
         f'// Offsets derived from the verified Spotify {VERSION} export windows.',
         '#pragma once', '#include <stdint.h>',
         f'static const uintptr_t SAPExportOwnerDescriptorOffset=0x{descriptor:x};',
+        f'static const uintptr_t SAPExportCacheNamespaceOffset=0x{namespace:x};',
         f'static const uintptr_t SAPExportUnsealCallerReturnOffset=0x{caller-BASE+0x18:x};',
         f'static const uintptr_t SAPExportCacheKeyBodyOffset=0x{body_address-BASE:x};',
         f'static const uint8_t SAPExportCacheKeyBody[]={{{_bytes(body)}}};',

@@ -18,6 +18,7 @@ import tempfile
 from pixie_target import PROFILE
 from patch_native_restrictions import branch, layout, UUID
 from patch_key_request_mode import DLSYM_STUB, _verify_dlsym_binding
+from patch_native_trace import text_tail_padding
 
 BASE = int(PROFILE["preferred_address"], 16)
 SYMBOL = b"SAPObserveExportBoundaryV2\0"
@@ -39,7 +40,7 @@ def window(name):
 
 def point(name):
     value = EXPORT["points"][name]
-    return (name, int(value["address"], 16), CAVE_BASE + value["kind"] * CAVE_STRIDE,
+    return (name, int(value["address"], 16), int(value["cave"], 16) if "cave" in value else CAVE_BASE + value["kind"] * CAVE_STRIDE,
             bytes.fromhex(value["original"]), value["kind"])
 
 
@@ -151,20 +152,23 @@ def patch(data):
         if not (vm <= address and address+length <= vm+size):
             raise ValueError('Export observation outside text')
         return fo+address-vm
-    for name in ("unseal_guard", "unseal_caller"):
+    for name in EXPORT["windows"]:
         address, expected = window(name)
         start = offset(address, len(expected))
         if data[start:start+len(expected)] != expected:
             raise ValueError(f'Native {name} window differs')
     out = bytearray(data)
     changes = []
+    tail_start, tail_end = text_tail_padding(data)
     for entry_point in ALL_POINTS:
         name, entry, cave, displaced, kind = entry_point
         code = trampoline(entry_point)
         start, dest = offset(entry, len(displaced)), offset(cave, len(code))
         if data[start:start+len(displaced)] != displaced:
             raise ValueError(f'Original {name} instructions differ')
-        if protection & 5 != 5 or dest < end or dest+len(code) > first or any(data[dest:dest+len(code)]):
+        header_padding = end <= dest and dest + len(code) <= first
+        tail_padding = tail_start <= dest and dest + len(code) <= tail_end
+        if protection & 5 != 5 or not (header_padding or tail_padding) or any(data[dest:dest+len(code)]):
             raise ValueError(f'{name} export cave unavailable')
         out[dest:dest+len(code)] = code
         out[start:start+len(displaced)] = struct.pack('<I', branch(entry, cave))+displaced[4:]

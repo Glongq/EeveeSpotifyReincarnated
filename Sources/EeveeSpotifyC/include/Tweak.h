@@ -1,9 +1,5 @@
 #import <UIKit/UIKit.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 NS_ASSUME_NONNULL_BEGIN
 
 void EeveeSBInvokeSeekDouble(id target, SEL selector, double argument);
@@ -14,20 +10,20 @@ UIImage *_Nullable EeveeEncoreIconImage(UIView *iconView, BOOL active);
 BOOL EeveeFireTap(UIView *root);
 int EeveeInstallColorSwaps(BOOL amoled, NSInteger accentRGB);
 void EeveeColorSwapStats(long *grey, long *green, long *uiColor);
-// Defined only in the opt-in jailbreak build; Swift calls it under that flag.
-BOOL EeveeNativeDownloadsIsReady(void);
-BOOL EeveeNativeDownloadsWillHandleDownloads(void);
 BOOL EeveePinSetter(id object, SEL setter, id value);
 BOOL EeveeInterceptBackground(UIView *view, void (^sink)(UIColor *color));
 
+// Artist-page download button of the Pixie companion. They resolve its exported functions at
+// runtime and do nothing when the companion is not loaded.
 void EeveePixieUpdateArtistDownloads(UIView *header, UIButton *_Nullable externalButton);
-
 NSString *_Nullable EeveePixieArtistURIForHeader(UIView *header);
 void EeveePixieInstallArtistFollow(void);
+// The Pixie download manager page in Eevee's settings list. Both do nothing when the companion is not loaded.
+BOOL EeveePixieDownloadsAvailable(void);
+NSString *EeveePixieStartupSummary(void);
+UIViewController *_Nullable EeveePixieMakeDownloadsController(void);
 NSInteger EeveePixieArtistFollowing(UIView *header, void (^changed)(void));
+// 1 saved, 0 not saved, -1 not known yet. `changed` runs when Spotify reports a new state.
+NSInteger EeveePixieSavedState(UIView *page, NSString *uri, void (^changed)(void));
 
 NS_ASSUME_NONNULL_END
-
-#ifdef __cplusplus
-}
-#endif

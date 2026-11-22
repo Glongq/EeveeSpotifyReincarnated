@@ -10,7 +10,8 @@ var spotifyAccessToken: String? {
 }
 
 func captureAccessToken(from request: URLRequest?, session: URLSession? = nil) {
-    SpriteAuthentication.capture(request, session: session)
+    // The Pixie companion reads these already-observed headers for its offline device manager.
+    PixieAuthentication.capture(request, session: session)
     guard let auth = request?.value(forHTTPHeaderField: "Authorization"), auth.hasPrefix("Bearer ") else { return }
     let token = String(auth.dropFirst(7))
     accessTokenLock.lock()
@@ -70,6 +71,13 @@ class SPTDataLoaderServiceHook: ClassHook<NSObject>, SpotifySessionDelegate {
             } else {
                 // Consumers crash on completion without a prior didReceiveData.
                 writeDebugLog("[DL] Missing buffered body for \(url.absoluteString) (taskId=\(task.taskIdentifier))")
+                if url.isNebulaAttributes {
+                    // Never hand the core an empty attributes body: leaving it to
+                    // its cache is better than clearing the product state.
+                    writeDebugLog("[DL] No attributes body to rewrite; left untouched")
+                    orig.URLSession(session, task: task, didCompleteWithError: error)
+                    return
+                }
                 orig.URLSession(session, dataTask: task, didReceiveData: Data())
                 orig.URLSession(session, task: task, didCompleteWithError: error)
             }

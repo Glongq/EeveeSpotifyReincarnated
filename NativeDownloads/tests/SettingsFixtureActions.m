@@ -1,16 +1,12 @@
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 #import "AudioProbeUI.h"
 #import "OfflineDevices.h"
+#import "NativeDownloadQuality.h"
 static BOOL fixtureSourceMismatch;
 @implementation SAPSettingsActions
 + (NSDictionary *)snapshot {
-#ifdef SAP_VITRINE_FIXTURE
- BOOL unsupported=[NSProcessInfo.processInfo.arguments containsObject:@"--unsupported"];
- return @{@"download_active":@NO,@"key_request_mode":@{@"configured_mode":unsupported?@(-1):@0,@"configuration_source":unsupported?@"unverified":@"verified_direct_instruction"},
-   @"jailbreak_bootstrap":@{@"native_patches_ready":@(!unsupported),@"reason":unsupported?@"unsupported_image":@"applied",@"detected_spotify_version":unsupported?@"9.1.92":@"9.1.90"}};
-#else
- return @{@"report":@{@"track_journal":@{@"state_counts":@{@"downloaded":@118,@"downloading":@2,@"waiting":@1,@"awaiting_redownload":@3,@"error":@4,@"waiting_limit_exceeded":@5,@"not_downloaded":@6,@"expired":@7}}},@"diagnostics":@"Audio diagnostics disabled",@"journal_summary":@"Downloaded: 118\nWaiting: 0\nErrors: 0",@"download_active":@NO,@"key_request_mode":@{@"selected_mode":@0,@"configured_mode":@0,@"configuration_source":@"verified_direct_instruction",@"last_selector_returned_mode":@(-1),@"runtime_selection_supported":@YES,@"restart_required":@NO,@"detail":@"Mode 0 is verified in the executable. This status does not confirm download authorization."}};
-#endif
+ return @{@"report":@{@"track_journal":@{@"state_counts":@{@"downloaded":@118,@"downloading":@2,@"waiting":@1,@"awaiting_redownload":@3,@"error":@4,@"waiting_limit_exceeded":@5,@"not_downloaded":@6,@"expired":@7}}},@"diagnostics":@"Download diagnostics disabled",@"journal_summary":@"Downloaded: 118\nWaiting: 0\nErrors: 0",@"download_active":@NO,@"key_request_mode":@{@"selected_mode":@0,@"configured_mode":@0,@"configuration_source":@"verified_direct_instruction",@"last_selector_returned_mode":@(-1),@"runtime_selection_supported":@YES,@"restart_required":@NO,@"detail":@"Mode 0 is verified in the executable. This status does not confirm download authorization."}};
 }
 + (NSDictionary *)snapshotForDetails:(BOOL)journal {return [self snapshot];}
 + (void)loadDetails:(BOOL)journal completion:(void (^)(NSDictionary *))completion {dispatch_async(dispatch_get_main_queue(),^{completion([self snapshot]);});}
@@ -57,3 +53,13 @@ void SAPPreviewOfflineDeviceSlots(void (^completion)(NSDictionary *,NSString *))
 }
 void SAPDisableOfflineDevice(NSString *plan,NSString *token,void (^completion)(NSDictionary *,NSString *)) {completion(nil,@"Fixture: no mutation performed.");}
 void SAPEnableOfflineOnCurrentDevice(void (^completion)(NSDictionary *,NSString *)) {fixtureSourceMismatch=YES;completion(nil,@"Fixture: no mutation performed.");}
+
+// Navigation is exercised without loading the real Spotify offline library.
+void SAPShowOfflineLibrary(UIViewController *presenter) {}
+
+NSString *SAPAudioExportFormat(void){return @"m4a";}
+NSString *const SAPNativeDownloadQualityOfferDidChangeNotification=@"SAPFixtureNativeQualityOfferChanged";
+BOOL SAPShouldOfferNativeDownloadQuality(void){return NO;}
+BOOL SAPDismissNativeDownloadQualityOfferAndOpenSettings(void){return NO;}
+
+void SAPFixtureSetDiagnostics(UIViewController *page,BOOL enabled){((void(*)(id,SEL,BOOL))objc_msgSend)(page,NSSelectorFromString(@"applyDiagnostics:"),enabled);}

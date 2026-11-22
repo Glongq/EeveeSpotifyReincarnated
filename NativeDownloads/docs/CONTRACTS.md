@@ -38,3 +38,33 @@ The target playlist preserves existing items/order. Whole releases are appended 
 `SAPDiagnosticsEnabled` is the atomic source of the switch. `SAP_JOURNAL_ACTION` and `SAP_TRACE` check it before preparing optional facts. Original callable APIs remain available. Reset invalidates old queued diagnostic work through generation checks, clears files/state and continues recording only if enabled.
 
 Working download observations are required even with diagnostics off. File names, log schema, public `SAP` names, settings identifiers and dylib install name retain compatibility. The support log honestly records observation times and unavailable sections; it is not an atomic server snapshot.
+
+## Bounded preparation and single-track groups
+
+Selected playlist metadata is read with a window of three requests and assembled
+in selection order before any playlist mutation. At most two playlist tasks may
+prepare concurrently; writes to one destination and global native admissions
+retain their existing FIFO ownership. Cancel invalidates every metadata read.
+
+Up to three adjacent releases with one verified, distinct track each may form one batch.
+Their tracks are appended in release order and each album receives its own native
+registration. Every native context completion and every item state are required
+before the next batch. Multi-track releases remain whole batches.
+
+A next-release Contains read may overlap the current batch's final track. Its
+result is task-scoped and expires after five seconds. A positive verification may
+be consumed once by the shared session, avoiding a duplicate Contains read; it
+never substitutes for native context or file evidence. Stop, Cancel and task exit
+invalidate these verifications and all lookahead work.
+
+Stop state-read failures retry read-only at most three times (1, 2, 4 seconds).
+Uncertain Remove outcomes are reconciled without replaying Remove. Exhaustion
+retains pending cancellation and ownership, reports the failure and permits an
+explicit Stop retry; it does not announce successful cancellation.
+
+The shared native scheduler allows at most three submitted contexts only when all
+three are verified one-track releases. A single group retains its total admission
+count until its remaining members finish, so fast members cannot admit a fourth
+release ahead of a slow or uncertain member. Albums retain their original two
+ownership slots and trusted near-tail admission. A third metadata preparation
+behind two verified singles cannot submit a multi-track release into that group.

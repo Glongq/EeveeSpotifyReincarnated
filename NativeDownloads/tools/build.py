@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +24,9 @@ def main():
     if not source.is_file():
         parser.error("Input IPA not found")
     validate_sources()
+    make = shutil.which("gmake") or shutil.which("make")
+    if not make or "GNU Make" not in subprocess.check_output([make, "--version"], text=True):
+        parser.error("GNU Make is required (gmake or make)")
     output = (args.output_dir or ROOT.parent / "outputs" /
               datetime.now().strftime("build-%Y%m%d-%H%M%S-%f")).resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -34,9 +38,9 @@ def main():
         alias.symlink_to(ROOT.parent, target_is_directory=True)
         env["THEOS_PROJECT_DIR"] = str(alias)
         with (output / "eevee-build.log").open("w") as log:
-            subprocess.run(["gmake", f"-j{args.jobs}", "all", "FINALPACKAGE=1",
+            subprocess.run([make, f"-j{args.jobs}", "all", "FINALPACKAGE=1",
                             f"THEOS_PROJECT_DIR={alias}",
-                            "REPO_SLUG=Glongq/EeveeSpotifyReincarnated", "BRANCH_NAME=Master"],
+                            "REPO_SLUG=SideloadLabs/EeveeSpotifyReincarnated", "BRANCH_NAME=Master"],
                            cwd=alias, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     eevee = ROOT.parent / ".theos/obj/EeveeSpotify.dylib"
     subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(eevee)], check=True)

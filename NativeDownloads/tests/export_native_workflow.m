@@ -9,12 +9,21 @@ static void (^lateRead)(NSData *,NSString *);
 static NSString *lastError;
 static NSString *const trackURI=@"spotify:track:0123456789012345678901";
 static NSString *const secondURI=@"spotify:track:0123456789012345678902";
+static BOOL metadataHasFiles;static NSUInteger metadataReads;
+static NSData *fileID(void){return [NSData dataWithBytes:"01234567890123456789" length:20];}
 
 static NSData *item(NSString *uri,NSUInteger code) {
     NSMutableData *fields=[SAPProtoBytes(1,[uri dataUsingEncoding:NSUTF8StringEncoding])mutableCopy];
     [fields appendData:SAPProtoInteger(2,code)];return SAPProtoBytes(1,fields);
 }
 void SAPCallReadOnlyService(NSString *service,NSString *method,NSData *request,void (^reply)(NSData *,NSString *)) {
+    if([service isEqual:@"spotify.metadata_esperanto.proto.ClassicMetadataService"]) {
+        assert([method isEqual:@"GetEntity"]);metadataReads++;
+        NSMutableData *track=[SAPProtoBytes(2,[@"First" dataUsingEncoding:NSUTF8StringEncoding])mutableCopy];
+        [track appendData:SAPProtoInteger(7,360000)];
+        if(metadataHasFiles)[track appendData:SAPProtoBytes(12,SAPProtoBytes(1,fileID()))];
+        reply(SAPProtoBytes(1,SAPProtoBytes(4,track)),nil);return;
+    }
     assert([service isEqual:@"spotify.offline_esperanto.proto.Offline"]);
     readCount++;
     if(holdRead){lateRead=[reply copy];return;}
@@ -36,7 +45,7 @@ void SAPPrepareNativeOffline(BOOL (^requested)(void),void (^reply)(BOOL,NSString
 void SAPCallOfflineCommandOnce(NSString *method,NSData *payload,void (^reply)(NSData *,NSString *)) {
     assert([method isEqual:@"AddDownload"] || [method isEqual:@"RemoveDownload"]);
     NSString *uri=SAPProtoString(SAPProtoFields(payload),2);
-    assert([uri isEqual:trackURI] || [uri isEqual:@"spotify:album:0123456789012345678901"]);
+    assert([uri isEqual:trackURI] || [uri isEqual:secondURI] || [uri isEqual:@"spotify:album:0123456789012345678901"]);
     commands++;reply(SAPProtoInteger(1,resultCode),nil);
 }
 
@@ -56,11 +65,11 @@ static NSArray *recoveryTargets;
 @end
 static SAPExportJob *job(BOOL album) {
     state=secondState=contextState=readCount=commands=preparations=writes=completions=resultCode=0;
-    prepareOK=YES;holdRead=invalidReply=NO;lateRead=nil;lastError=nil;
+    metadataHasFiles=NO;metadataReads=0;prepareOK=YES;holdRead=invalidReply=NO;lateRead=nil;lastError=nil;
     SAPExportWorkflowFixture *j=[SAPExportWorkflowFixture new];
     j.targetURI=album?@"spotify:album:0123456789012345678901":trackURI;
-    j.resolved=[@[@{@"uri":trackURI,@"name":@"First"}]mutableCopy];
-    if(album)[j.resolved addObject:@{@"uri":secondURI,@"name":@"Second"}];
+    j.resolved=[@[@{@"uri":trackURI,@"name":@"First",@"files":@[fileID()]}]mutableCopy];
+    if(album)[j.resolved addObject:@{@"uri":secondURI,@"name":@"Second",@"files":@[fileID()]}];
     j.completion=^(NSArray *files,NSString *error){completions++;lastError=error;};
     activeJob=j;atomic_store(&exporting,true);return j;
 }
@@ -131,5 +140,33 @@ int main(void){@autoreleasepool {
     assert(recovery.refreshAttempted&&recovery.automaticKeyRefresh);
     assert(![recovery recoverMissingCachedKey:failed evidence:proof]&&recoveryCalls==1);
 
-    puts("PASS 14 native export workflows: one AddDownload, track and album confirmation, no-start release, cancellation, errors, late callbacks, timer cleanup; Diagnostics off");
+    // A track resolved before its download has no file ids: they are fetched again before writing.
+    j=job(NO);j.resolved[0]=@{@"uri":trackURI,@"name":@"First",@"files":@[]};metadataHasFiles=YES;state=3;
+    [j prepareNativeDownload];[j pollNativeDownload];[j pollNativeDownload];drain();
+    assert(metadataReads==1&&writes==1&&!lastError&&[j.resolved[0][@"files"]count]==1);
+    j=job(NO);j.resolved[0]=@{@"uri":trackURI,@"name":@"First",@"files":@[]};state=3;
+    [j prepareNativeDownload];[j pollNativeDownload];[j pollNativeDownload];drain();
+    assert(metadataReads==1&&writes==0&&[lastError containsString:@"no audio files"]);
+    j=job(NO);state=3;[j prepareNativeDownload];[j pollNativeDownload];[j pollNativeDownload];drain();
+    assert(metadataReads==0&&writes==1);
+
+    // Album share: only the tracks Spotify does not have are requested, one AddDownload each.
+    j=job(YES);j.shareOnly=YES;j.temporaryCaptured=YES;j.temporaryToken=@{@"initial_download_states":@{trackURI:@0,secondURI:@3}};
+    secondState=3;[j prepareNativeDownload];assert(commands==1&&preparations==1&&!writes);
+    state=3;[j pollNativeDownload];[j pollNativeDownload];drain();assert(writes==1&&commands==1);
+    j=job(YES);j.shareOnly=YES;j.temporaryCaptured=YES;j.temporaryToken=@{@"initial_download_states":@{trackURI:@0,secondURI:@0}};
+    [j prepareNativeDownload];assert(commands==2&&!writes);
+
+    // A track Spotify accepts but never queues is skipped once the rest is finished, and named.
+    j=job(YES);j.shareOnly=YES;j.temporaryCaptured=YES;j.temporaryToken=@{@"initial_download_states":@{trackURI:@0,secondURI:@0}};
+    state=3;secondState=0;[j prepareNativeDownload];assert(commands==2&&!writes);
+    [j pollNativeDownload];assert(!writes&&j.resolved.count==2);
+    j.lastProgress-=61;[j pollNativeDownload];assert(j.resolved.count==1&&[j.resolved[0][@"album_skipped"]isEqual:@[@"Second"]]);
+    [j pollNativeDownload];[j pollNativeDownload];drain();assert(writes==1);
+    // Nothing downloaded at all is still a failure.
+    j=job(YES);j.shareOnly=YES;j.temporaryCaptured=YES;j.temporaryToken=@{@"initial_download_states":@{trackURI:@0,secondURI:@0}};
+    [j prepareNativeDownload];[j pollNativeDownload];j.lastProgress-=61;[j pollNativeDownload];drain();
+    assert(!writes&&[lastError containsString:@"stopped downloading"]);
+
+    puts("PASS 21 native export workflows: one AddDownload, track and album confirmation, no-start release, cancellation, errors, late callbacks, timer cleanup; Diagnostics off");
 }}

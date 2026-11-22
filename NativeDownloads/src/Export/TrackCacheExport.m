@@ -185,6 +185,7 @@ NSDictionary *SAPExportShareMetadata(NSDictionary *track,NSURL *file) {
     art[@"album_name"]=track[@"album_name"]?:@"Album";
     art[@"share_filename"]=[NSString stringWithFormat:@"%@.%@",safeName(track[@"name"]),file.pathExtension];
     art[@"track_uri"]=track[@"uri"]?:@"";
+    if([track[@"album_skipped"]count])art[@"album_skipped"]=track[@"album_skipped"];
     NSMutableDictionary *encoding=NSMutableDictionary.dictionary;
     for(NSString *key in @[@"uri",@"name",@"artist_name",@"artist_uri",@"album_name",@"album_uri",@"category",@"number",@"disc",@"year"])
         if(track[key])encoding[key]=track[key];

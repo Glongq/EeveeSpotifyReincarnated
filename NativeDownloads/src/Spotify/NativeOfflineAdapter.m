@@ -234,7 +234,7 @@ static BOOL nativeState(id wrapper,void **manager,uintptr_t *image,NSMutableDict
     // function (analysis/queue_track_limit.txt @0x10533b28c) compares against these same
     // limits before it returns TOO_MANY_TRACKS(19). Cross-checked against analysis/queue_restriction_refs.txt.
     uint8_t data[0x30];
-    if(!readMemory(pointer+0x2b0,data,sizeof(data)))return NO;
+    if(!readMemory(pointer+0x2b0+SAP_TARGET_MANAGER_FIELD_SHIFT,data,sizeof(data)))return NO;
     int32_t currentTracks,currentEpisodes,tracks,episodes;int64_t duration,episodeDuration,abpDuration;
     memcpy(&currentTracks,data,4);memcpy(&currentEpisodes,data+4,4);memcpy(&tracks,data+8,4);
     memcpy(&duration,data+0x10,8);memcpy(&episodes,data+0x18,4);
@@ -444,18 +444,14 @@ void SAPPrepareNativeOffline(BOOL (^stillRequested)(void),void (^completion)(BOO
         if(stillRequested&&!stillRequested()) { [operation finish:NO reason:SAPL(@"Подготовка отменена.",@"Preparation cancelled.") report:nil];return; }
         void *manager=NULL;uintptr_t image=0;NSMutableDictionary *before=[NSMutableDictionary dictionary];
         // The app's invalidate method clears wrapper+8. Read it only on its queue.
-        if(!nativeState(wrapper,&manager,&image,before)) { [operation finish:NO reason:SAPL(@"Нативный менеджер завершён или сборка Spotify не совпадает с проверенной 9.1.92.",@"The native manager has shut down, or this Spotify build does not match the verified 9.1.92.") report:nil];return; }
-        // v16: previously only raised the quota when it was exactly (0,0) — the
-        // "never synced" sentinel. A real account can sync a small nonzero limit
-        // (this is what capped the user's playlist download after a handful of
-        // tracks: current_tracks reached music_limit and new reservations started
-        // returning TOO_MANY_TRACKS=19). Now raise whenever it's below the target,
-        // and never lower an existing higher value.
+        if(!nativeState(wrapper,&manager,&image,before)) { [operation finish:NO reason:SAPL(@"Нативный менеджер завершён или сборка Spotify не совпадает с проверенной версией.",@"The native manager has shut down, or this Spotify build does not match the verified version.") report:nil];return; }
+        // Use Spotify's 10k track quota, including replacing an elevated value
+        // retained from an older Pixie build. Duration and episode policy stay separate.
         const int32_t desiredDurationSeconds=SAPMinimumMusicDurationSeconds, desiredTrackLimit=SAPMinimumTrackLimit;
-        BOOL changed=[before[@"music_limit"] intValue]<desiredTrackLimit || [before[@"music_duration_seconds"] longLongValue]<desiredDurationSeconds;
+        BOOL changed=[before[@"music_limit"] intValue]!=desiredTrackLimit || [before[@"music_duration_seconds"] longLongValue]<desiredDurationSeconds;
         if(changed) {
             int32_t newDuration=(int32_t)MAX([before[@"music_duration_seconds"] longLongValue],(long long)desiredDurationSeconds);
-            int32_t newTrackLimit=(int32_t)MAX([before[@"music_limit"] intValue],desiredTrackLimit);
+            int32_t newTrackLimit=desiredTrackLimit;
             ((void(*)(void *,int32_t,int32_t,int32_t,int32_t,int32_t))(image+setterOffset))(manager,newDuration,newTrackLimit,[before[@"episode_duration_seconds"] intValue],[before[@"episode_limit"] intValue],[before[@"abp_duration_seconds"] intValue]);
         }
         NSMutableDictionary *after=[NSMutableDictionary dictionary];

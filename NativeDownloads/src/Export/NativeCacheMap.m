@@ -41,7 +41,7 @@ void SAPNativeCacheObserve(const uint64_t *registers,uintptr_t imageBase) {
     }
     uint8_t material[44]={0},descriptor[24]={0};
     uintptr_t owner=(uintptr_t)registers[0];
-    if(owner>UINTPTR_MAX-0x230||!readMemory(owner+0x230,material,20)||
+    if(owner>UINTPTR_MAX-SAPExportCacheNamespaceOffset||!readMemory(owner+SAPExportCacheNamespaceOffset,material,20)||
        !readMemory((uintptr_t)registers[1],descriptor,sizeof(descriptor))) {
         clearMemory(material,sizeof(material));clearMemory(descriptor,sizeof(descriptor));
         os_unfair_lock_lock(&mappingLock);guardVerified=YES;readFailures++;os_unfair_lock_unlock(&mappingLock);return;

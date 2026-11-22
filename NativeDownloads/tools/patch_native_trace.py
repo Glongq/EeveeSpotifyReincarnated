@@ -147,7 +147,7 @@ def patch(data):
     return bytes(out),{'uuid':UUID.hex(),'fixed_request_mode':0,'helper':SYMBOL[:-1].decode(),'boundaries':reports,'key_material_read':False}
 
 def header():
-    lines=['// Generated guarded native observation boundaries for Spotify 9.1.92.','#pragma once','#include <stdint.h>']
+    lines=[f'// Generated guarded native observation boundaries for Spotify {PROFILE["spotify_version"]}.','#pragma once','#include <stdint.h>']
     for point in POINTS:
         name,address,cave,expected,kind=point;stub=trampoline(point)
         values=lambda b:','.join(f'0x{x:02x}' for x in b)

@@ -1,3 +1,4 @@
+import EeveeSpotifyC
 import SwiftUI
 import UIKit
 
@@ -27,10 +28,10 @@ struct EeveeSettingsView: View {
         PopUpHelper.showPopUp(message: "debug_log_cleared".localized, buttonText: "debug_log_cleared_ok".localized)
     }
 
-    // Ko-fi is where the tweak is funded from. It is the only place we ask for
-    // money, so the button lives with the other "about" style rows near the
+    // Donations are where the tweak is funded from. It is the only place we ask
+    // for money, so the button lives with the other "about" style rows near the
     // bottom of the page rather than up in the feature groups.
-    private static let supportURL = URL(string: "https://ko-fi.com/jaydenjcpy")!
+    private static let supportURL = URL(string: "https://sideloadlabs.github.io/donate/")!
 
     private func openSupportPage() {
         UIApplication.shared.open(Self.supportURL)
@@ -44,12 +45,21 @@ struct EeveeSettingsView: View {
         }
     }
 
+    // Pixie's download manager sits with the listening settings. The row only exists when the Pixie
+    // companion is loaded; it opens Pixie's own page, so the entry's view is never used.
+    private static let pixieDownloadsKey = "manage_downloads"
+
+    private static var pixieDownloadsEntries: [SettingsEntry] {
+        guard EeveePixieDownloadsAvailable() else { return [] }
+        return [SettingsEntry(key: pixieDownloadsKey, icon: "arrow.down.circle.fill", color: .green) { AnyView(EmptyView()) }]
+    }
+
     private static let groups: [SettingsGroup] = [
         SettingsGroup(key: "settings_group_listening", entries: [
             SettingsEntry(key: "patching", icon: "hammer.fill", color: .orange) { AnyView(EeveePatchingSettingsView()) },
             SettingsEntry(key: "lyrics", icon: "quote.bubble.fill", color: .blue) { AnyView(EeveeLyricsSettingsView()) },
             SettingsEntry(key: "sponsorblock", icon: "forward.end.fill", color: .red) { AnyView(SponsorBlockSettingsView()) },
-        ]),
+        ] + pixieDownloadsEntries),
         SettingsGroup(key: "settings_group_looks", entries: [
             SettingsEntry(key: "appearance", icon: "drop.fill", color: Color(hex: "#30B0C7")) { AnyView(AppearanceSettingsView()) },
             SettingsEntry(key: "customization", icon: "paintpalette.fill", color: Color(hex: "#64D2FF")) { AnyView(EeveeUISettingsView()) },
@@ -89,6 +99,10 @@ struct EeveeSettingsView: View {
             
             ForEach(Self.groups) { group in
                 SettingsGroupSection(group: group) { entry in
+                    if entry.key == Self.pixieDownloadsKey, let page = EeveePixieMakeDownloadsController() {
+                        navigationController.pushViewController(page, animated: true)
+                        return
+                    }
                     SettingsNavigator.push(entry.make(), title: entry.key.localized)
                 }
             }

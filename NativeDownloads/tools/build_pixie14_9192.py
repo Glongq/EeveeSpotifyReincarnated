@@ -19,7 +19,7 @@ from export_headers import headers
 from export_release_materials import notices, retain_relink_sources
 from patch_export import patch as patch_export
 from patch_native_restrictions import layout
-from pixie_target import PROFILE, ROOT, validate_sources
+from pixie_target import PROFILE, PROFILE_PATH, ROOT, validate_sources
 from signing_metadata import sign_preserving_entitlements
 from strip_stale_signature import strip_stale_signature
 
@@ -84,7 +84,7 @@ def main():
             changed = [n for n in source.namelist() if source.getinfo(n).CRC != result.getinfo(n).CRC]
             assert set(changed) == {MAIN, COMPANION}, changed
     snapshot = [*sources, *(ROOT / "src").rglob("*.h"), *(ROOT / "src").rglob("*.swift"),
-                *(ROOT / "vendor").iterdir(), ROOT / "targets/spotify-9.1.92.json"]
+                *(ROOT / "vendor").iterdir(), PROFILE_PATH]
     report = {"ipa": str(args.output.resolve()), "input": str(args.ipa.resolve()),
               "sha256": hashlib.sha256(args.output.read_bytes()).hexdigest(),
               "input_sha256": hashlib.sha256(args.ipa.read_bytes()).hexdigest(),

@@ -26,6 +26,9 @@ enum SAPNativeShareCore {
     }
     static func canonicalURI(_ text: String) -> String? {
         var kind: String, identifier: String
+        // Track rows in playlists and Liked Songs share "spotify:track:ID?context=spotify:playlist:ID&rowId=...".
+        var text = text
+        if text.hasPrefix("spotify:"), let cut = text.firstIndex(where: { $0 == "?" || $0 == "#" }) { text = String(text[..<cut]) }
         let pieces = text.split(separator: ":", omittingEmptySubsequences: false)
         if pieces.count == 3 && pieces[0] == "spotify" {
             kind = String(pieces[1]); identifier = String(pieces[2])

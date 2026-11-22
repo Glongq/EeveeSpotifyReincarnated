@@ -40,16 +40,7 @@ struct LatestPremiumPatchingGroup: HookGroup { }
 
 // Early 9.1.x builds dropped the offline helper; newer ones bring it back.
 func activateV91ServerSidedReminderIfAvailable() {
-    #if NATIVE_DOWNLOADS_JAILBREAK
-    if EeveeNativeDownloadsWillHandleDownloads() { return }
-    #endif
-    let className = ContentOffliningUIHelperImplementationModernHook.targetName
-    let selector = Selector((
-        "downloadToggledWithCurrentAvailability:addAction:removeAction:pageIdentifier:pageURI:interactionID:"
-    ))
-
-    guard let cls = NSClassFromString(className),
-          class_getInstanceMethod(cls, selector) != nil else {
+    guard ContentOffliningUIHelperImplementationModernHook.isAvailable else {
         writeDebugLog("[INIT] Server-sided download reminder unavailable on this 9.1.x build")
         return
     }
@@ -66,6 +57,7 @@ func activatePremiumPatchingGroup() {
     }
     else if EeveeSpotify.hookTarget == .v91 {
         NonIOS14PremiumPatchingGroup().activate()
+        activateV91ServerSidedReminderIfAvailable()
         // Removed in 9.1.28; hooking a missing method is fatal.
         let trackRowsSel = Selector(("initWithViewURI:onDemandSet:onDemandTrialService:trackRowsEnabled:productState:"))
         if UIView.instancesRespond(to: trackRowsSel) {
@@ -79,13 +71,7 @@ func activatePremiumPatchingGroup() {
             IOS14And15PremiumPatchingGroup().activate()
         }
         else {
-            #if NATIVE_DOWNLOADS_JAILBREAK
-            if !EeveeNativeDownloadsWillHandleDownloads() {
-                LatestPremiumPatchingGroup().activate()
-            }
-            #else
             LatestPremiumPatchingGroup().activate()
-            #endif
         }
     }
 }
@@ -193,8 +179,17 @@ func eeveeEnvFlag(_ name: String) -> Bool {
     return s == "1" || s == "true" || s == "yes" || s == "y"
 }
 
+// Swift global initialization runs once, even if Orion reinitializes the tweak.
+// The main queue runs after dylib constructors, avoiding a false startup failure
+// when Pixie is initialized after Eevee in the same process.
+private let pixieStartupLog: Void = {
+    DispatchQueue.main.async {
+        writeDebugLog("[INIT] \(EeveePixieStartupSummary())")
+    }
+}()
+
 struct EeveeSpotify: Tweak {
-    static let version = "7.0.0"
+    static let version = "7.5.0"
     static let buildNumber = "1"
     static let spotifyVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     static let repoSlug = GeneratedConfig.repoSlug
@@ -204,16 +199,7 @@ struct EeveeSpotify: Tweak {
         
         eeveeLog("[EeveeSpotify] Detected Spotify version: \(version)")
         
-        switch version {
-        case "9.0.48":
-            return .lastAvailableiOS15
-        case "8.9.8":
-            return .lastAvailableiOS14
-        case _ where version.contains("9.1"):
-            return .v91
-        default:
-            return .latest
-        }
+        return VersionHookTarget.forSpotifyVersion(version)
     }
     
     // MARK: - Non-fatal hook error handling
@@ -227,6 +213,7 @@ struct EeveeSpotify: Tweak {
 
     init() {
         eeveeBreadcrumb("Tweak init() entered")
+        _ = pixieStartupLog
         // A stale flag cancels the next bootstrap and hangs the splash screen.
         UserDefaults.hasPatchedBootstrap = false
 
@@ -238,10 +225,13 @@ struct EeveeSpotify: Tweak {
         // Local-only premium force; independent of patching, so premium UI survives everything else being off.
         activateEeveePremiumForce()
 
+        // Must run before Spotify issues its first attributes request, which it
+        // does within a second of launch.
+        activateNebulaAttributes()
+
         activateTelemetryBlock()
         activateTheme()
         activateLiquidGlass()
-        activatePixieArtistDownloads()
         activatePlayerGestures()
         activatePlayerHaptics()
         activateHomeDeclutter()
@@ -249,6 +239,10 @@ struct EeveeSpotify: Tweak {
         activateHomeGradient()
         activateArtistHides()
         activatePlaylistHides()
+        if UserDefaults.patchType.isPatching,
+           NSClassFromString(LocalPlaylistDownloadHeaderHook.targetName) != nil {
+            LocalPlaylistDownloadGroup().activate()
+        }
         HideJam.activate()
         activateRemoteFlags()
         activateRatingPromptBlock()
@@ -287,12 +281,13 @@ struct EeveeSpotify: Tweak {
         writeDebugLog("[INIT] tweakInitTime: \(tweakInitTime)")
 
         activateCarPlayCrashFix()
+        activatePixieAuthenticationCapture()
 
         let hookTargets: [(String, String)] = [
             ("SPTAuthSessionImplementation", "SPTAuthSession"),
             ("_TtC24Connectivity_SessionImpl18SessionServiceImpl", "SessionServiceImpl"),
             ("SPTAuthLegacyLoginControllerImplementation", "LegacyLoginController"),
-            ("_TtC24Connectivity_SessionImplP33_831B98CC28223E431E21CD27ADD20AF222OauthAccessTokenBridge", "OauthAccessTokenBridge"),
+            (OauthAccessTokenBridgeHook.targetName, "OauthAccessTokenBridge"),
             ("ARTWebSocketTransport", "AblyWebSocket"),
             ("ARTSRWebSocket", "AblySRWebSocket"),
         ]
@@ -408,7 +403,7 @@ struct EeveeSpotify: Tweak {
             BaseLyricsGroup().activate()
             LyricsErrorHandlingGroup().activate()
             
-            if EeveeSpotify.hookTarget == .latest {
+            if EeveeSpotify.hookTarget == .v90 {
                 ModernLyricsGroup().activate()
             }
             else {

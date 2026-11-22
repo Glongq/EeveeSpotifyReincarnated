@@ -63,6 +63,42 @@ private func forcedPremiumString(forKey key: String) -> String? {
     }
 }
 
+private let directGetterCoreAdKeys: Set<String> = [
+    "type",
+    "catalogue",
+    "product",
+    "name",
+    "player-license",
+    "player-license-v2",
+    "financial-product",
+    "ads",
+    "ab-ad-player-targeting",
+    "allow-advertising-id-transmission",
+    "restrict-advertising-id-transmission",
+    "audio-ad-frequency",
+    "video-ad-frequency",
+    "ad-formats",
+    "on-demand",
+    "unrestricted",
+    "shuffle-eligible",
+    "high-bitrate",
+    "streaming-rules",
+    "previous-streaming-rules",
+    "shuffle",
+    "shuffle-mode",
+    "pick-and-shuffle",
+    "forced_logout",
+    "forced_logout_abroad_since",
+    "force_logout",
+    "logout_required",
+    "session_invalidated",
+]
+
+private func forcedDirectGetterString(forKey key: String) -> String? {
+    guard directGetterCoreAdKeys.contains(key) else { return nil }
+    return forcedPremiumString(forKey: key)
+}
+
 private let stripKeys: Set<String> = [
     "payment-state",
     "last-premium-activation-date",
@@ -118,6 +154,9 @@ private let premiumWatchKeys: [String] = [
 ]
 
 private func passiveLogProductState(_ tag: String, _ dict: NSDictionary) {
+    if dict["ads"] as? String == "1" {
+        writeDebugLog("[ORACLE][ENTITLEMENT_DRIFT] SPTCoreProductState reported ads=1 in \(tag)")
+    }
     var pairs: [String] = []
     for k in premiumWatchKeys {
         if let v = dict[k] { pairs.append("\(k)=\(v)") }
@@ -149,14 +188,14 @@ class CoreProductStateHook: ClassHook<NSObject> {
     }
 
     func stringForKey(_ key: NSString) -> NSString? {
-        if enableDirectGetters, let forced = forcedPremiumString(forKey: key as String) {
+        if enableDirectGetters, let forced = forcedDirectGetterString(forKey: key as String) {
             return forced as NSString
         }
         return orig.stringForKey(key)
     }
 
     func objectForKeyedSubscript(_ key: NSString) -> Any? {
-        if enableDirectGetters, let forced = forcedPremiumString(forKey: key as String) {
+        if enableDirectGetters, let forced = forcedDirectGetterString(forKey: key as String) {
             return forced as NSString
         }
         return orig.objectForKeyedSubscript(key)
@@ -184,8 +223,11 @@ class CoreProductStateHook: ClassHook<NSObject> {
 }
 
 class AdsProductStateHook: ClassHook<NSObject> {
-    typealias Group = EeveePremiumForceGroup
-    static let targetName = "SPTAdsProductState"
+    typealias Group = EeveeAdsProductStateGroup
+    static let targetName = classNameFallback(
+        "SPTAdsProductState",
+        "_TtC18AdsPlatform_AdsAPI15AdsProductState"
+    )
 
     func adsEnabled() -> Bool {
         return enableAdsHook ? false : orig.adsEnabled()
@@ -214,10 +256,11 @@ private func swizzleBoolGetter(_ cls: AnyClass, _ name: String, _ value: Bool) {
 }
 
 struct EeveePremiumForceGroup: HookGroup {}
+struct EeveeAdsProductStateGroup: HookGroup {}
 
 private let enableDictRewrite = false
-private let enableDirectGetters = false
-private let enableAdsHook = false
+private let enableDirectGetters = true
+private let enableAdsHook = true
 private let enablePassiveProductStateLog = true
 
 func activateEeveePremiumForce() {
@@ -237,4 +280,14 @@ func activateEeveePremiumForce() {
         return
     }
     EeveePremiumForceGroup().activate()
+
+    // Spotify 9.2.2 moved this to a Swift class that no longer exposes the
+    // adsEnabled() selector, so only hook it when the method actually exists.
+    let adsTarget = AdsProductStateHook.targetName
+    if let cls = NSClassFromString(adsTarget) as? NSObject.Type,
+       cls.instancesRespond(to: Selector("adsEnabled")) {
+        EeveeAdsProductStateGroup().activate()
+    } else {
+        NSLog("[FORCE] Skipped AdsProductState hook: %@ lacks adsEnabled()", adsTarget)
+    }
 }

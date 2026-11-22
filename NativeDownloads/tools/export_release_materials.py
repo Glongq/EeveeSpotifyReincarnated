@@ -17,9 +17,9 @@ def retain_relink_sources(output):
 
 Complete companion source and the stb_vorbis decoder source are included. No phone data or keys are included.
 
-Requires macOS, Xcode command-line tools and Python 3. Rebuild using the preserved assembled EeveeSpotify 7.0.0 / Spotify 9.1.92 base IPA that carries Pixie 1.3:
+Requires macOS, Xcode with the iPhoneOS SDK and Python 3. The active target is declared in NativeDownloads/tools/pixie_target.py. Rebuild from the matching clean Eevee IPA and the corresponding Eevee UI library:
 
-    python3 NativeDownloads/tools/build_pixie14_9192.py /path/to/base.ipa --output /path/to/new.ipa
+    python3 NativeDownloads/tools/build_eevee_9192.py /path/to/base.ipa --eevee-dylib /path/to/EeveeSpotify.dylib --output /path/to/new.ipa
 
 The builder compiles the provided application source and Swift bridge. M4A/AAC uses Apple system frameworks; Ogg decoding uses the bundled stb_vorbis source. See NativeDownloads/vendor/M4A-NOTICES.md.
 ''')
