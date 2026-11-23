@@ -67,7 +67,7 @@ final class PlaylistActionRow: UIView {
             ]
         }
         mountPreviewIfReady()
-        if changed { actions.contentOffset.x = -actions.contentInset.left; setNeedsLayout() }
+        if changed { actions.contentOffset = .zero; setNeedsLayout() }
     }
 
     // Hosted outside Spotify's header (adding views there stalls its layout), so it follows the header's scroll itself.
@@ -203,15 +203,9 @@ final class PlaylistActionRow: UIView {
         let playWidth = min(max(140, playButton.sizeThatFits(CGSize(width: 220, height: side)).width), max(96, bounds.width * 0.45))
         let playFrame = CGRect(x: bounds.width - edge - playWidth, y: y, width: playWidth, height: side)
         if playButton.frame != playFrame { playButton.frame = playFrame }
-        // The strip runs from the screen edge to the middle of the Play capsule, so scrolled buttons leave
-        // under the opaque capsule and off the screen instead of at a straight cut. The insets keep the
-        // first and last button clear of both at the scroll limits. Next to a native artist preview the
-        // strip starts after it, as buttons must not pass over Spotify's own view.
-        let previewEnd = preservesPreviewLayout ? nativePreviewEnd(in: self).map { max(edge, $0 + gap) } ?? edge : nil
-        let stripFrame = CGRect(x: previewEnd ?? 0, y: y, width: max(0, playFrame.midX - (previewEnd ?? 0)), height: side)
+        let start = preservesPreviewLayout ? nativePreviewEnd(in: self).map { max(edge, $0 + gap) } ?? edge : edge
+        let stripFrame = CGRect(x: start, y: y, width: max(0, playFrame.minX - gap - start), height: side)
         if actions.frame != stripFrame { actions.frame = stripFrame }
-        let insets = UIEdgeInsets(top: 0, left: previewEnd == nil ? edge : 0, bottom: 0, right: playFrame.width / 2 + gap)
-        if actions.contentInset != insets { actions.contentInset = insets }
         var x: CGFloat = 0
         for native in [explore, download].compactMap({ $0 }) where hosts(native) && !native.isHidden {
             let size = native === explore ? previewSize : CGSize(width: side, height: side)
@@ -228,7 +222,7 @@ final class PlaylistActionRow: UIView {
         shuffleDot.center = CGPoint(x: side / 2, y: side - 7)
         let size = CGSize(width: max(0, x - gap), height: side)
         if actions.contentSize != size { actions.contentSize = size }
-        let offset = max(-insets.left, min(actions.contentOffset.x, size.width + insets.right - actions.bounds.width))
+        let offset = max(0, min(actions.contentOffset.x, size.width - actions.bounds.width))
         if actions.contentOffset.x != offset { actions.contentOffset.x = offset }
     }
 
