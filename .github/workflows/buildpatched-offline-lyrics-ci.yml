@@ -4,7 +4,8 @@ on:
     branches: [ci/offline-lyrics-9.2.2-all]
 
 permissions:
-  contents: read
+  # Draft releases are readable only with write access to the repository contents.
+  contents: write
 
 env:
   THEOS: ${{ github.workspace }}/theos
@@ -73,13 +74,11 @@ jobs:
       
       - name: Download and verify the vanilla IPA from this repository's draft
         env:
-          IPA_DOWNLOAD_URL: ${{ secrets.CI_PIXIE_IPA_INPUT_URL }}
+          GH_TOKEN: ${{ github.token }}
           IPA_SHA256: '6919a14740038b3ea89724485603ac659d7685c9995978cb2040b1cdea6810dd'
         run: |
-          test -n "$IPA_DOWNLOAD_URL"
-          curl --proto '=https' --proto-redir '=https' --fail --silent --show-error --location --retry 3 \
-            "$IPA_DOWNLOAD_URL" \
-            -o "${{ github.workspace }}/spotify.ipa"
+          gh release download ci-lyrics-input-202611201455 --repo "${{ github.repository }}" \
+            --pattern 'com.spotify.client-9.2.2-decrypted.ipa' --output "${{ github.workspace }}/spotify.ipa"
           printf '%s  %s\n' "$IPA_SHA256" "${{ github.workspace }}/spotify.ipa" | shasum -a 256 -c -
 
       - name: Build zxPluginsInject.dylib
