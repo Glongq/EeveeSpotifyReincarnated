@@ -181,12 +181,18 @@ final class PlaylistActionRow: UIView {
     private static let followImage = UIImage(systemName: "person.badge.plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let followedImage = UIImage(systemName: "person.fill.checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let plusImage = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
-    // Drawn like Spotify's downloaded indicator: a small accent disc with a dark check inside the glass circle.
-    private static let savedImage = UIImage(
-        systemName: "checkmark.circle.fill",
-        withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
-            .applying(UIImage.SymbolConfiguration(paletteColors: [.black, Theme.accent]))
-    )?.withRenderingMode(.alwaysOriginal)
+    // The same 24-point accent disc with a dark glyph as Spotify's downloaded indicator. Drawn once into a
+    // bitmap: a button configuration recolors symbol images with its own tint, a plain image it leaves alone.
+    private static let savedImage: UIImage = {
+        let side: CGFloat = 24
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            Theme.accent.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side)).fill()
+            let check = UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .bold))?
+                .withTintColor(.black, renderingMode: .alwaysOriginal)
+            check?.draw(at: CGPoint(x: (side - (check?.size.width ?? 0)) / 2, y: (side - (check?.size.height ?? 0)) / 2))
+        }.withRenderingMode(.alwaysOriginal)
+    }()
     private static let playTitle = "playlist_play".localized
     private static let pauseTitle = "playlist_pause".localized
     // Measured with the longer title, so the capsule keeps one width for Play and Pause.
