@@ -19,6 +19,7 @@ private let karaokeObserver = EeveeKaraokeObserver()
 @objc final class EeveeKaraokeObserver: NSObject {
     @objc func didChangeState(_ newState: AnyObject) {
         KaraokePlaybackTracker.shared.processStateChange(state: newState)
+        PlayerContextState.shared.update(from: newState)
         DispatchQueue.main.async {
             KaraokeGestureTrigger.shared.attachIfNeeded()
         }
@@ -26,6 +27,7 @@ private let karaokeObserver = EeveeKaraokeObserver()
 
     @objc func player(_ player: AnyObject, stateDidChange newState: AnyObject) {
         KaraokePlaybackTracker.shared.processStateChange(state: newState)
+        PlayerContextState.shared.update(from: newState)
         DispatchQueue.main.async {
             KaraokeGestureTrigger.shared.attachIfNeeded()
         }
@@ -33,6 +35,7 @@ private let karaokeObserver = EeveeKaraokeObserver()
 
     @objc func player(_ player: AnyObject, stateDidChange newState: AnyObject, fromState oldState: AnyObject) {
         KaraokePlaybackTracker.shared.processStateChange(state: newState)
+        PlayerContextState.shared.update(from: newState)
         DispatchQueue.main.async {
             KaraokeGestureTrigger.shared.attachIfNeeded()
         }
