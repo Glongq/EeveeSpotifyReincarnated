@@ -30,6 +30,11 @@ final class PlayerContextState {
         }
     }
 
+    /// For the log: the reported context and whether it plays.
+    var summary: String {
+        known ? "\(contextKey ?? "none") \(playing ? "playing" : "stopped")" : "unknown"
+    }
+
     /// Whether the page with this URI is the playing context, or nil before the player has reported.
     func isPlaying(page uri: String) -> Bool? {
         guard known else { return nil }

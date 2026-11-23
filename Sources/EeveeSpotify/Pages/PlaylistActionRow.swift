@@ -135,6 +135,7 @@ final class PlaylistActionRow: UIView {
     // Set while the row is too narrow for the capsule; Play is then a round button in the place of Spotify's own.
     private var roundPlay = false
     private var playerObservation: NSObjectProtocol?
+    private var playStateReport = ""
 
     private static func makePlayButton() -> UIButton {
         var config = UIButton.Configuration.prominentGlass()
@@ -264,8 +265,14 @@ final class PlaylistActionRow: UIView {
         // The player's context against this page's URI. Spotify's button label is localized, so the English
         // "pause" check is only a fallback for pages without a URI or before the player has reported.
         let page = sourceRoot.flatMap { pageURI(from: $0, kinds: ["album", "playlist", "artist"]) }
-        let playing = page.flatMap(PlayerContextState.shared.isPlaying(page:))
-            ?? ((play?.accessibilityLabel ?? play?.eeveeFirst(UIControl.self)?.accessibilityLabel)?.lowercased().contains("pause") == true)
+        let label = play?.accessibilityLabel ?? play?.eeveeFirst(UIControl.self)?.accessibilityLabel
+        let fromPlayer = page.flatMap(PlayerContextState.shared.isPlaying(page:))
+        let playing = fromPlayer ?? (label?.lowercased().contains("pause") == true)
+        let report = "page=\(page ?? "none") player=\(PlayerContextState.shared.summary) match=\(fromPlayer.map { "\($0)" } ?? "none") label=\(label ?? "none") -> \(playing ? "pause" : "play")"
+        if report != playStateReport {
+            playStateReport = report
+            eeveeLog("[EeveeSpotify][Glass] Play state %@", report)
+        }
         let title = playing ? Self.pauseTitle : Self.playTitle
         var config = playButton.configuration
         config?.image = playing ? Self.pauseImage : Self.playImage
@@ -371,14 +378,21 @@ final class PlaylistActionRow: UIView {
         return nil
     }
 
+    // Spotify's page controllers expose their URI as spt_pageURI or pageURI. Only an object-returning
+    // getter is called, so a page whose pageURI is not an Objective-C object is skipped, not crashed on.
+    private static let pageURISelectors = ["spt_pageURI", "pageURI"].map(NSSelectorFromString)
+
     private func pageURI(from root: UIView, kinds: [String] = ["album", "playlist"]) -> String? {
-        let selector = NSSelectorFromString("spt_pageURI")
         var responder: UIResponder? = root
         while let current = responder {
-            if let controller = current as? UIViewController, controller.responds(to: selector),
-               let value = controller.perform(selector)?.takeUnretainedValue() {
-                let text = (value as? URL)?.absoluteString ?? value as? String
-                if let text, kinds.contains(where: { text.hasPrefix("spotify:\($0):") }) { return text }
+            if let controller = current as? UIViewController {
+                for selector in Self.pageURISelectors {
+                    guard let method = class_getInstanceMethod(type(of: controller), selector),
+                          method_getTypeEncoding(method)?.pointee == CChar(UInt8(ascii: "@")),
+                          let value = controller.perform(selector)?.takeUnretainedValue() else { continue }
+                    let text = (value as? URL)?.absoluteString ?? value as? String
+                    if let text, kinds.contains(where: { text.hasPrefix("spotify:\($0):") }) { return text }
+                }
             }
             responder = current.next
         }
