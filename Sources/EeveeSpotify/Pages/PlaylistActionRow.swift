@@ -443,9 +443,14 @@ final class PlaylistActionRow: UIView {
         // The album / playlist state comes from Spotify's collection state, which reports every change.
         let saved = sourceRoot.flatMap { root in pageURI(from: root).map { EeveePixieSavedState(root, $0) { [weak self] in self?.sync() } } } ?? -1
         let liked = saved >= 0 ? saved == 1 : add.flatMap(Self.savedState) ?? false
-        var addConfig = addButton.configuration
-        addConfig?.image = liked ? Self.checkImage : Self.plusImage
-        addConfig?.baseForegroundColor = liked ? Theme.color(Theme.spotifyGreen) : .white
+        // Saved reads like Spotify's downloaded indicator: a filled accent circle with a dark check.
+        var addConfig: UIButton.Configuration = liked ? .prominentGlass() : .glass()
+        addConfig.cornerStyle = .capsule
+        addConfig.image = liked ? Self.checkImage : Self.plusImage
+        addConfig.baseForegroundColor = liked ? .black : .white
+        // A nil tint hands the plain glass circle back to the inherited tint.
+        let addTint: UIColor? = liked ? Theme.accent : nil
+        if addButton.tintColor != (addTint ?? addButton.superview?.tintColor) { addButton.tintColor = addTint }
         if addButton.configuration != addConfig { addButton.configuration = addConfig }
 
         // Spotify marks shuffle with a small dot under its icon and swaps the icon for smart shuffle.
