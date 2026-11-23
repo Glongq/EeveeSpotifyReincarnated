@@ -181,7 +181,12 @@ final class PlaylistActionRow: UIView {
     private static let followImage = UIImage(systemName: "person.badge.plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let followedImage = UIImage(systemName: "person.fill.checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
     private static let plusImage = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
-    private static let checkImage = UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+    // Drawn like Spotify's downloaded indicator: a small accent disc with a dark check inside the glass circle.
+    private static let savedImage = UIImage(
+        systemName: "checkmark.circle.fill",
+        withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
+            .applying(UIImage.SymbolConfiguration(paletteColors: [.black, Theme.accent]))
+    )?.withRenderingMode(.alwaysOriginal)
     private static let playTitle = "playlist_play".localized
     private static let pauseTitle = "playlist_pause".localized
     // Measured with the longer title, so the capsule keeps one width for Play and Pause.
@@ -443,14 +448,8 @@ final class PlaylistActionRow: UIView {
         // The album / playlist state comes from Spotify's collection state, which reports every change.
         let saved = sourceRoot.flatMap { root in pageURI(from: root).map { EeveePixieSavedState(root, $0) { [weak self] in self?.sync() } } } ?? -1
         let liked = saved >= 0 ? saved == 1 : add.flatMap(Self.savedState) ?? false
-        // Saved reads like Spotify's downloaded indicator: a filled accent circle with a dark check.
-        var addConfig: UIButton.Configuration = liked ? .prominentGlass() : .glass()
-        addConfig.cornerStyle = .capsule
-        addConfig.image = liked ? Self.checkImage : Self.plusImage
-        addConfig.baseForegroundColor = liked ? .black : .white
-        // A nil tint hands the plain glass circle back to the inherited tint.
-        let addTint: UIColor? = liked ? Theme.accent : nil
-        if addButton.tintColor != (addTint ?? addButton.superview?.tintColor) { addButton.tintColor = addTint }
+        var addConfig = addButton.configuration
+        addConfig?.image = liked ? Self.savedImage : Self.plusImage
         if addButton.configuration != addConfig { addButton.configuration = addConfig }
 
         // Spotify marks shuffle with a small dot under its icon and swaps the icon for smart shuffle.
