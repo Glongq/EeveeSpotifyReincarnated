@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from patch_offline import TARGET, DISABLED
 from pixie_target import ROOT
 
 MARKERS = ('AdsSponsoredContextServiceImpl', 'AdsSponsoredContextNPBAttachmentServiceImpl',
@@ -69,7 +68,6 @@ def main():
         symbols = {line.split()[-1] for line in run('nm', '-gU', companion).splitlines() if line.split()}
         assert all('_'+name in symbols for name in EXPORTS), 'Companion API missing'
         assert all(marker in run('strings', eevee) for marker in MARKERS)
-        assert binary.count(TARGET) == 0 and binary.count(DISABLED) == 1
         one('EeveeSpotify.bundle'); one('EeveeSpotify.plist'); one('KaraokeBackgroundShader.metallib')
         framework = one('EeveeSwiftProtobuf.framework/EeveeSwiftProtobuf')
         if args.scheme == 'roothide':
@@ -83,7 +81,7 @@ def main():
             'sha256':hashlib.sha256(package.read_bytes()).hexdigest(), 'size_bytes':package.stat().st_size,
             'version':run('dpkg-deb','-f',package,'Version').strip(), 'pixie_bundled':True,
             'required_companion_dependency':True, 'exported_api_checked':list(EXPORTS),
-            'eevee_markers_checked':len(MARKERS), 'reminder_patch_applied':True,
+            'eevee_markers_checked':len(MARKERS),
             'companion_signature_valid':True, 'notices_bundled':True, 'build':build,
             'device_runtime_tested':False}
     package.with_suffix('.build.json').write_text(json.dumps(report, indent=2)+'\n')

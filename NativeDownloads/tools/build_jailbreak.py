@@ -9,16 +9,12 @@ from zipfile import ZipFile
 
 from companion_build import build_companion
 from jailbreak_plan import make_plan, header
-from patch_offline import patch_reminder
 from pixie_target import ROOT, PROFILE, PROFILE_PATH, validate_sources
 from export_release_materials import notices
 
 
 def stage_eevee(path, stage_root):
-    # Same one-byte reminder edit as build_eevee_9192.py, on the staged copy.
-    patched, _ = patch_reminder(path.read_bytes())
-    path.write_bytes(patched)
-    subprocess.run(['ldid', '-S', str(path)], check=True)
+    # Eevee itself is staged unchanged, as in build_eevee_9192.py; only the notices are added.
     destination = stage_root/'usr/share/doc/com.eevee.spotify/Pixie'
     destination.mkdir(parents=True, exist_ok=True)
     for name, data in notices().items():
