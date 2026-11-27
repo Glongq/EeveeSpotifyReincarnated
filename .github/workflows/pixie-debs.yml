@@ -1,0 +1,229 @@
+name: Build Pixie rootless + RootHide .debs
+
+# Same build as builddeb.yml, plus the Pixie companion (PIXIE_JAILBREAK=1), for every
+# Spotify version that has a target in NativeDownloads/targets and a clean decrypted
+# IPA (com.spotify.client-<version>-*.ipa) in the draft release PIXIE_IPA_RELEASE.
+# The IPA is read only to generate the guarded patch plan; it is not uploaded.
+
+run-name: Pixie DEBs — ${{ github.ref_name }}
+
+on:
+  push:
+    branches: ['**debs**']
+  workflow_dispatch:
+
+# Draft releases are readable only with write access to the repository contents.
+permissions:
+  contents: write
+
+env:
+  SWIFTPROTOBUF_VERSION: "1.29.0"
+  PIXIE_JAILBREAK: "1"
+  PIXIE_IPA_RELEASE: ${{ vars.PIXIE_IPA_RELEASE || 'ci-lyrics-input-202611201455' }}
+
+jobs:
+  targets:
+    name: Find Spotify versions
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: List targets with a clean IPA
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYTHON'
+          import fnmatch, json, os, subprocess
+          from pathlib import Path
+          assets = subprocess.run(['gh', 'release', 'view', os.environ['PIXIE_IPA_RELEASE'],
+              '--repo', os.environ['GITHUB_REPOSITORY'], '--json', 'assets', '-q', '.assets[].name'],
+              capture_output=True, text=True).stdout.split()
+          schemes = [('rootless', 'rootless', 'theos/theos'), ('roothide', 'RootHide', 'roothide/theos')]
+          include = []
+          for target in sorted(Path('NativeDownloads/targets').glob('spotify-*.json')):
+              version = json.loads(target.read_text())['spotify_version']
+              ipa = fnmatch.filter(assets, f'com.spotify.client-{version}-*.ipa')
+              if len(ipa) != 1:
+                  print(f'::warning::Spotify {version}: skipped, {len(ipa)} clean IPAs in {os.environ["PIXIE_IPA_RELEASE"]}')
+                  continue
+              include += [{'spotify': version, 'target': 'targets/' + target.name, 'ipa': ipa[0],
+                           'scheme': s, 'label': l, 'theos_repository': r} for s, l, r in schemes]
+          if not include:
+              raise SystemExit('::error::No Spotify version has both a target and a clean IPA')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('matrix=' + json.dumps({'include': include}) + '\n')
+          PYTHON
+
+  build-debs:
+    name: Build Spotify ${{ matrix.spotify }} ${{ matrix.label }} .deb
+    needs: targets
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+
+    env:
+      THEOS: ${{ github.workspace }}/theos
+      THEOS_PACKAGE_SCHEME: ${{ matrix.scheme }}
+      PIXIE_TARGET: ${{ matrix.target }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3.0"
+
+      - name: Checkout ${{ matrix.label }} Theos
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.theos_repository }}
+          path: ${{ github.workspace }}/theos
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          brew install make dpkg ldid
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Download clean Spotify ${{ matrix.spotify }} IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa"
+          gh release download "$PIXIE_IPA_RELEASE" --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ matrix.ipa }}" --dir "$RUNNER_TEMP/ipa"
+          echo "PIXIE_SOURCE_IPA=$RUNNER_TEMP/ipa/${{ matrix.ipa }}" >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=$(sed -n 's/^Version: *//p' control)+pixie.${{ matrix.spotify }}" >> "$GITHUB_ENV"
+
+      - name: Install the Metal toolchain if missing
+        run: |
+          xcrun -sdk iphoneos metal --version || xcodebuild -downloadComponent MetalToolchain
+          xcrun -sdk iphoneos metal --version
+
+      - name: Build EeveeSwiftProtobuf.framework
+        env:
+          SRC_DIR: ${{ runner.temp }}/swift-protobuf
+        run: make build-eeveeswiftprotobuf
+
+      - name: Test ad and Premium banner filtering
+        run: |
+          swiftc \
+            Sources/EeveeSpotify/Premium/Helpers/BrowsitaSectionStripper.swift \
+            Tests/BrowsitaSectionStripper/main.swift \
+            -o "$RUNNER_TEMP/browsita-section-stripper-tests"
+          "$RUNNER_TEMP/browsita-section-stripper-tests"
+          swiftc \
+            Sources/EeveeSpotify/Shared/Models/Extensions/URL+Extension.swift \
+            Tests/URLAdClassification/main.swift \
+            -o "$RUNNER_TEMP/url-ad-classification-tests"
+          "$RUNNER_TEMP/url-ad-classification-tests"
+          swiftc \
+            Sources/EeveeSpotify/Premium/Helpers/ServerSidedFeaturePolicy.swift \
+            Tests/ServerSidedFeaturePolicy/main.swift \
+            -o "$RUNNER_TEMP/server-sided-feature-policy-tests"
+          "$RUNNER_TEMP/server-sided-feature-policy-tests"
+          swiftc \
+            Sources/EeveeSpotify/Premium/Helpers/BundledConfigurationPolicy.swift \
+            Tests/BundledConfigurationPolicy/main.swift \
+            -o "$RUNNER_TEMP/bundled-configuration-policy-tests"
+          "$RUNNER_TEMP/bundled-configuration-policy-tests"
+          swiftc \
+            Sources/EeveeSpotify/Shared/Models/VersionHookTarget.swift \
+            Tests/VersionHookTarget/main.swift \
+            -o "$RUNNER_TEMP/version-hook-target-tests"
+          "$RUNNER_TEMP/version-hook-target-tests"
+          swiftc \
+            Tests/CustomTabsActivation/main.swift \
+            -o "$RUNNER_TEMP/custom-tabs-activation-tests"
+          "$RUNNER_TEMP/custom-tabs-activation-tests"
+          swiftc \
+            Tests/HookSourceAudit/main.swift \
+            -o "$RUNNER_TEMP/hook-source-audit-tests"
+          "$RUNNER_TEMP/hook-source-audit-tests"
+          python3 Tests/ResolveConfigurationSnapshot/test.py
+
+      - name: Check guarded Pixie runtime helpers
+        timeout-minutes: 2
+        run: |
+          python3 NativeDownloads/tools/test.py --no-sanitize \
+            --fixture jailbreak_identity --fixture jailbreak_patches --fixture jailbreak_import_memory \
+            --build-dir "$RUNNER_TEMP/pixie-runtime-tests"
+
+      - name: Build ${{ matrix.label }} .deb
+        env:
+          REPO_SLUG: ${{ github.repository }}
+        run: |
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="${{ matrix.scheme }}"
+          ls -la packages
+
+      - name: Stage ${{ matrix.label }} artifact
+        run: |
+          mkdir -p Outputs/DEBS
+          if [ "${{ matrix.scheme }}" = "roothide" ]; then ARCH=iphoneos-arm64e; else ARCH=iphoneos-arm64; fi
+          DEB_PATH="Outputs/DEBS/EeveeSpotify-${PACKAGE_VERSION}-${{ matrix.label }}.deb"
+          cp -f "packages/com.eevee.spotify_${PACKAGE_VERSION}_${ARCH}.deb" "$DEB_PATH"
+          cp ".theos/pixie-${{ matrix.scheme }}/build.json" "Outputs/DEBS/${{ matrix.scheme }}-companion-build.json"
+          shasum -a 256 "$DEB_PATH" > "${DEB_PATH}.sha256"
+
+      - name: Validate package metadata and layout
+        run: |
+          DEB_PATH="$(find Outputs/DEBS -name '*.deb' -type f | head -n 1)"
+          dpkg-deb --info "$DEB_PATH"
+          dpkg-deb --contents "$DEB_PATH"
+          EXTRACT_DIR="$RUNNER_TEMP/eevee-deb-${{ matrix.scheme }}"
+          dpkg-deb -x "$DEB_PATH" "$EXTRACT_DIR"
+          DYLIB_PATH="$(find "$EXTRACT_DIR" -name 'EeveeSpotify.dylib' -type f | head -n 1)"
+          [ -n "$DYLIB_PATH" ] || { echo "EeveeSpotify.dylib missing" >&2; exit 1; }
+          for marker in \
+            AdsSponsoredContextServiceImpl \
+            AdsSponsoredContextNPBAttachmentServiceImpl \
+            AdsSponsoredPlaylistHeaderServiceImpl \
+            SelfLoadingUpsellBannerUIView \
+            ReferralsUpsellCardElementServiceImpl \
+            DownloadUpsellService \
+            FreeHostedJamsUpsellServiceImpl \
+            FreeUserSkipUpsellPageService \
+            FreeUserShuffleUpsellSheetPageService \
+            premium_gated_start_jam_buttons_enabled \
+            playlist_downloading_popup \
+            downloadToggledWithCurrentAvailability:addAction:removeAction:pageIdentifier:pageURI:interactionID:; do
+            strings "$DYLIB_PATH" | grep -Fq "$marker" || {
+              echo "Compiled banner blocker marker missing: $marker" >&2
+              exit 1
+            }
+          done
+          if [ "${{ matrix.scheme }}" = "roothide" ]; then
+            [ "$(dpkg-deb -f "$DEB_PATH" Architecture)" = "iphoneos-arm64e" ]
+          fi
+
+      - name: Validate Pixie companion and shader
+        run: |
+          DEB_PATH="$(find Outputs/DEBS -name '*.deb' -type f | head -n 1)"
+          python3 NativeDownloads/tools/validate_jailbreak_deb.py "$DEB_PATH" \
+            --scheme "${{ matrix.scheme }}" --build-dir ".theos/pixie-${{ matrix.scheme }}"
+          python3 - "$DEB_PATH" <<'PYTHON'
+          import runpy, sys
+          from pathlib import Path
+          runpy.run_path('Scripts/build-pixie-debs-local.py')['validate_shader'](Path(sys.argv[1]))
+          print('PASS: compiled karaoke vertex and fragment functions')
+          PYTHON
+
+      - name: Upload ${{ matrix.label }} artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pixie-${{ matrix.spotify }}-${{ matrix.label }}-DEB
+          path: Outputs/DEBS/
+          if-no-files-found: error
+          retention-days: 14

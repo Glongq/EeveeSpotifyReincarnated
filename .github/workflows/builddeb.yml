@@ -1,25 +1,30 @@
-name: Build Pixie rootless + RootHide DEBs
-
-run-name: Pixie DEBs — ${{ github.ref_name }}
+name: Build rootless + RootHide .debs + Draft Release
 
 on:
-  push:
-    branches: [pixie-debs]
   workflow_dispatch:
-
-permissions:
-  contents: read
+    inputs:
+      tag:
+        description: "Git tag to create/use for the draft release (e.g. v6.6.3.1)"
+        required: true
+        default: "v6.6.3.1"
+      release_name:
+        description: "Release title (optional)"
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark as prerelease"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
-  PACKAGE_VERSION: "7.5.0+pixie.deb2"
-  PIXIE_JAILBREAK: "1"
 
 jobs:
   build-debs:
     name: Build ${{ matrix.label }} .deb
-    runs-on: macos-26
-    timeout-minutes: 45
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +37,7 @@ jobs:
             theos_repository: roothide/theos
 
     env:
-      THEOS: ${{ github.workspace }}/Outputs/BuildTools/theos-${{ matrix.scheme }}
+      THEOS: ${{ github.workspace }}/theos
       THEOS_PACKAGE_SCHEME: ${{ matrix.scheme }}
 
     steps:
@@ -50,7 +55,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.theos_repository }}
-          path: Outputs/BuildTools/theos-${{ matrix.scheme }}
+          path: ${{ github.workspace }}/theos
           submodules: recursive
 
       - name: Install build tools
@@ -58,20 +63,7 @@ jobs:
           brew install make dpkg ldid
           echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
-      - name: Verify prepared Pixie plan and Metal tools
-        run: |
-          python3 NativeDownloads/tools/build_jailbreak.py \
-            --plan-dir NativeDownloads/jailbreak/plans/spotify-9.2.0 \
-            --export-plan "$RUNNER_TEMP/verified-plan"
-          if ! xcrun -sdk iphoneos metal --version; then
-            xcodebuild -downloadComponent MetalToolchain
-          fi
-          xcrun -sdk iphoneos metal --version
-          xcrun -sdk iphoneos --find metallib
-
       - name: Build EeveeSwiftProtobuf.framework
-        env:
-          SRC_DIR: ${{ runner.temp }}/swift-protobuf-${{ matrix.scheme }}
         run: make build-eeveeswiftprotobuf
 
       - name: Test ad and Premium banner filtering
@@ -111,49 +103,84 @@ jobs:
           "$RUNNER_TEMP/hook-source-audit-tests"
           python3 Tests/ResolveConfigurationSnapshot/test.py
 
-      - name: Check guarded Pixie runtime helpers
-        timeout-minutes: 2
-        run: |
-          python3 NativeDownloads/tools/test.py --no-sanitize \
-            --fixture jailbreak_identity --fixture jailbreak_patches --fixture jailbreak_import_memory \
-            --build-dir Outputs/DEBS/runtime-tests-${{ matrix.scheme }}
-
       - name: Build ${{ matrix.label }} .deb
         env:
           REPO_SLUG: ${{ github.repository }}
         run: |
-          make clean
+          make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="${{ matrix.scheme }}"
           ls -la packages
 
-      - name: Stage and validate ${{ matrix.label }} artifact
-        env:
-          SCHEME: ${{ matrix.scheme }}
-          LABEL: ${{ matrix.label }}
+      - name: Stage ${{ matrix.label }} artifact
         run: |
-          set -euo pipefail
           mkdir -p Outputs/DEBS
-          if [ "$SCHEME" = roothide ]; then ARCH=iphoneos-arm64e; else ARCH=iphoneos-arm64; fi
-          DEB_PATH="Outputs/DEBS/EeveeSpotify-${PACKAGE_VERSION}-${LABEL}.deb"
-          cp "packages/com.eevee.spotify_${PACKAGE_VERSION}_${ARCH}.deb" "$DEB_PATH"
-          python3 NativeDownloads/tools/validate_jailbreak_deb.py "$DEB_PATH" \
-            --scheme "$SCHEME" --build-dir ".theos/pixie-${SCHEME}"
-          python3 - "$DEB_PATH" <<'PYTHON'
-          import runpy, sys
-          from pathlib import Path
-          runpy.run_path('Scripts/build-pixie-debs-local.py')['validate_shader'](Path(sys.argv[1]))
-          print('PASS: compiled karaoke vertex and fragment functions')
-          PYTHON
-          cp ".theos/pixie-${SCHEME}/build.json" "Outputs/DEBS/${SCHEME}-companion-build.json"
-          cp ".theos/pixie-${SCHEME}/JailbreakPlan.h" "Outputs/DEBS/${SCHEME}-JailbreakPlan.h"
-          git archive --format=tar.gz --output="Outputs/DEBS/${SCHEME}-sources.tar.gz" HEAD
-          shasum -a 256 "$DEB_PATH" > "${DEB_PATH}.sha256"
+          DEB_PATH="$(ls -t packages/*.deb | head -n 1)"
+          [ -n "$DEB_PATH" ] || { echo "No .deb produced" >&2; exit 1; }
+          if [ "${{ matrix.scheme }}" = "roothide" ]; then
+            OUT_NAME="$(basename "$DEB_PATH" .deb)-roothide.deb"
+          else
+            OUT_NAME="$(basename "$DEB_PATH")"
+          fi
+          cp -f "$DEB_PATH" "Outputs/DEBS/$OUT_NAME"
+
+      - name: Validate package metadata and layout
+        run: |
+          DEB_PATH="$(find Outputs/DEBS -name '*.deb' -type f | head -n 1)"
+          dpkg-deb --info "$DEB_PATH"
+          dpkg-deb --contents "$DEB_PATH"
+          EXTRACT_DIR="$RUNNER_TEMP/eevee-deb-${{ matrix.scheme }}"
+          dpkg-deb -x "$DEB_PATH" "$EXTRACT_DIR"
+          DYLIB_PATH="$(find "$EXTRACT_DIR" -name 'EeveeSpotify.dylib' -type f | head -n 1)"
+          [ -n "$DYLIB_PATH" ] || { echo "EeveeSpotify.dylib missing" >&2; exit 1; }
+          for marker in \
+            AdsSponsoredContextServiceImpl \
+            AdsSponsoredContextNPBAttachmentServiceImpl \
+            AdsSponsoredPlaylistHeaderServiceImpl \
+            SelfLoadingUpsellBannerUIView \
+            ReferralsUpsellCardElementServiceImpl \
+            DownloadUpsellService \
+            FreeHostedJamsUpsellServiceImpl \
+            FreeUserSkipUpsellPageService \
+            FreeUserShuffleUpsellSheetPageService \
+            premium_gated_start_jam_buttons_enabled \
+            playlist_downloading_popup \
+            downloadToggledWithCurrentAvailability:addAction:removeAction:pageIdentifier:pageURI:interactionID:; do
+            strings "$DYLIB_PATH" | grep -Fq "$marker" || {
+              echo "Compiled banner blocker marker missing: $marker" >&2
+              exit 1
+            }
+          done
+          if [ "${{ matrix.scheme }}" = "roothide" ]; then
+            [ "$(dpkg-deb -f "$DEB_PATH" Architecture)" = "iphoneos-arm64e" ]
+          fi
 
       - name: Upload ${{ matrix.label }} artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pixie-${{ matrix.label }}-DEB
-          path: Outputs/DEBS/
+          name: EeveeSpotify-${{ matrix.label }}-DEB
+          path: Outputs/DEBS/*.deb
           if-no-files-found: error
-          retention-days: 14
+
+  draft-release:
+    name: Create draft release
+    needs: build-debs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download both packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: EeveeSpotify-*-DEB
+          path: Outputs/DEBS
+          merge-multiple: true
+
+      - name: Draft GitHub Release and attach both .debs
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ inputs.release_name != '' && inputs.release_name || inputs.tag }}
+          draft: true
+          prerelease: ${{ inputs.prerelease == 'true' }}
+          files: Outputs/DEBS/*.deb

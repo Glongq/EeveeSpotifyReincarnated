@@ -3,12 +3,13 @@
 import argparse
 import io
 import os
+import plistlib
 from pathlib import Path
 import shutil
-import shlex
 import subprocess
 import sys
 import tarfile
+from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,13 +27,20 @@ def validate_shader(package):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ipa', type=Path, required=True)
-    parser.add_argument('--version', default='7.5.0+pixie.deb2')
+    parser.add_argument('--version', help='Package version (default: control Version + "+pixie.<Spotify version>")')
     parser.add_argument('--swift-no-nested-sandbox', action='store_true',
                         help='Run Xcode macro subprocesses inside the existing outer sandbox')
-    parser.add_argument('--metal-toolchain', type=Path,
-                        help='Use an installed Metal.xctoolchain directly when Xcode discovery is unavailable')
     args = parser.parse_args()
     ipa = args.ipa.resolve(strict=True)
+    with ZipFile(ipa) as archive:
+        spotify = plistlib.loads(archive.read('Payload/Spotify.app/Info.plist'))['CFBundleShortVersionString']
+    target = f'targets/spotify-{spotify}.json'
+    if not (ROOT/'NativeDownloads'/target).is_file():
+        raise SystemExit(f'No Pixie target for Spotify {spotify}: NativeDownloads/{target}')
+    if not args.version:
+        control = (ROOT/'control').read_text()
+        eevee = next(line.split(':', 1)[1].strip() for line in control.splitlines() if line.startswith('Version:'))
+        args.version = f'{eevee}+pixie.{spotify}'
     output = ROOT/'Outputs/DEBS'/args.version
     output.mkdir(parents=True, exist_ok=True)
     for scheme, label in [('rootless', 'rootless'), ('roothide', 'RootHide')]:
@@ -41,18 +49,10 @@ def main():
         if not framework.is_file():
             raise SystemExit(f'Prepare Theos and EeveeSwiftProtobuf 1.29.0 first: {framework}')
         env = dict(os.environ, THEOS=str(theos), THEOS_PACKAGE_SCHEME=scheme,
-                   PIXIE_JAILBREAK='1', PIXIE_SOURCE_IPA=str(ipa),
+                   PIXIE_JAILBREAK='1', PIXIE_SOURCE_IPA=str(ipa), PIXIE_TARGET=target,
                    REPO_SLUG='Glongq/EeveeSpotifyReincarnated', PACKAGE_VERSION=args.version)
         if args.swift_no_nested_sandbox:
             env['ADDITIONAL_SWIFTFLAGS'] = '-Xfrontend -disable-sandbox'
-        if args.metal_toolchain:
-            for variable, tool in [('METAL', 'metal'), ('METALLIB', 'metallib')]:
-                # Preserve the executable's alias: resolving metallib to air-lld
-                # changes its default link mode and can emit an empty library.
-                path = args.metal_toolchain.absolute()/'usr/bin'/tool
-                if not path.is_file():
-                    raise SystemExit(f'Metal tool unavailable: {path}')
-                env[variable] = shlex.join(['xcrun', '-sdk', 'iphoneos', str(path)])
         with (output/(scheme+'.log')).open('w') as log:
             for command in (['/opt/homebrew/bin/gmake', 'clean'],
                             ['/opt/homebrew/bin/gmake', 'package', 'FINALPACKAGE=1']):

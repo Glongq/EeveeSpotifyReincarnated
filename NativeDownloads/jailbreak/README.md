@@ -1,33 +1,42 @@
 # Pixie DEB builds
 
-Build EeveeSpotify with Pixie for Spotify 9.2.0 (build 920002054), executable UUID
-`b49e75781d8635d38bb57daf68fed8a8`. Device runtime testing remains required.
+EeveeSpotify with Pixie as rootless and RootHide packages, for every Spotify version
+that has a target profile in `NativeDownloads/targets`. Device runtime testing remains
+required.
 
 ## GitHub Actions
 
-The `pixie-debs` branch runs `.github/workflows/builddeb.yml` on push. The workflow
-keeps the upstream Theos process: Xcode 26.3, theos/theos for rootless,
-roothide/theos for RootHide, EeveeSwiftProtobuf 1.29.0, then `make clean` and
-`make package FINALPACKAGE=1`. Both schemes enable `PIXIE_JAILBREAK=1`.
+`.github/workflows/pixie-debs.yml` runs on push to a branch whose name contains
+`debs`, or by hand. It is upstream's `builddeb.yml` (Xcode 26.3, theos/theos for
+rootless, roothide/theos for RootHide, EeveeSwiftProtobuf 1.29.0, the same tests and
+package checks, `make package FINALPACKAGE=1`) with `PIXIE_JAILBREAK=1` and these
+additions:
 
-The verified prepared plan under `plans/spotify-9.2.0` contains only native patch
-and guard bytes, import offsets, target identity and provenance hashes. It was
-produced from the matching clean decrypted IPA by the same IPA patchers. No full
-Spotify executable or IPA is committed or uploaded to the runner. CI refuses a
-stale generator input or changed plan header before compiling the companion.
+- One build per target in `NativeDownloads/targets` whose clean decrypted IPA,
+  `com.spotify.client-<version>-*.ipa`, is attached to the draft release named by the
+  repository variable `PIXIE_IPA_RELEASE`. Versions without one are skipped with a
+  warning.
+- The IPA is read on the runner only to generate the guarded patch plan with the
+  same IPA patchers; it is never uploaded.
+- The guarded runtime helpers are tested, and each package is checked by
+  `tools/validate_jailbreak_deb.py` and for the compiled karaoke shader.
+- Artifacts: the DEB, its SHA-256 and the companion's `build.json`. No release is created.
 
-To regenerate after changing a recorded generator input:
+A new Spotify version needs no workflow change: once its target profile exists,
+attach its clean IPA to the draft release.
+
+## Makefile
+
+`PIXIE_JAILBREAK=1` requires `PIXIE_TARGET=targets/spotify-<version>.json`. The plan
+comes from `PIXIE_SOURCE_IPA` (a clean IPA), or else from a prepared plan in
+`jailbreak/plans/spotify-<version>`, which can be exported without committing the IPA:
 
 ```sh
-python3 NativeDownloads/tools/build_jailbreak.py --ipa /path/to/clean-Spotify.ipa \
-  --export-plan NativeDownloads/jailbreak/plans/spotify-9.2.0
+PIXIE_TARGET=targets/spotify-<version>.json python3 NativeDownloads/tools/build_jailbreak.py \
+  --ipa /path/to/clean-Spotify.ipa --export-plan NativeDownloads/jailbreak/plans/spotify-<version>
 ```
 
-CI artifacts contain the DEB, source archive, generated plan, build provenance,
-package validation, SHA-256 and focused runtime-helper results. Package checks
-cover architecture, required companion dependency, API, signatures, framework,
-Eevee reminder patch, decoder notices and compiled karaoke shader functions.
-No release is created by this workflow.
+A prepared plan is refused once any generator input changes.
 
 ## Runtime changes
 
@@ -42,14 +51,7 @@ No release is created by this workflow.
   native guards, import failures and write-verification failures in the existing
   self-contained Send log and startup summary.
 
-The earlier combined identity error did not identify its failed subcondition.
-Matching runtime UUID and code samples were observed, but successful host builds
-or package checks do not establish jailbreak startup or download success.
-
 ## Local build
 
-The clean-IPA path remains supported via `PIXIE_SOURCE_IPA`, or omit it to use the
-prepared plan. Prepare each scheme's Theos and EeveeSwiftProtobuf framework first.
-Local helper: `Scripts/build-pixie-debs-local.py --ipa /path/to/clean-Spotify.ipa`.
-On hosts with restricted Xcode discovery, its optional `--metal-toolchain` argument
-must preserve the `metallib` executable alias rather than resolving it to air-lld.
+`Scripts/build-pixie-debs-local.py --ipa /path/to/clean-Spotify.ipa` picks the target
+from the IPA's version. Prepare each scheme's Theos and EeveeSwiftProtobuf framework first.

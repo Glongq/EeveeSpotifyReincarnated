@@ -2,7 +2,6 @@ name: Pixie 1.4 — Spotify 9.2.0 and 9.2.2
 
 on:
   push:
-    branches-ignore: [pixie-debs]
     paths: ['NativeDownloads/**', 'Sources/**', 'Tests/PixieStartupLogging/**', 'Makefile', '.github/workflows/native-downloads.yml']
   pull_request:
     paths: ['NativeDownloads/**', 'Sources/**', 'Tests/PixieStartupLogging/**', 'Makefile', '.github/workflows/native-downloads.yml']

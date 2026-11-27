@@ -1,8 +1,6 @@
 TARGET := iphone:clang:latest:14.0
 INSTALL_TARGET_PROCESSES = Spotify
 ARCHS = arm64
-METAL ?= xcrun -sdk iphoneos metal
-METALLIB ?= xcrun -sdk iphoneos metallib
 
 include $(THEOS)/makefiles/common.mk
 
@@ -24,8 +22,14 @@ EeveeSpotify_EXTRA_FRAMEWORKS = EeveeSwiftProtobuf
 EeveeSpotify_CFLAGS = -fobjc-arc -ISources/EeveeSpotifyC/include -Os
 
 # Opt-in jailbreak packaging. IPA builds retain their existing static patch path.
+# PIXIE_TARGET names the Spotify version (targets/spotify-<version>.json); the patch plan
+# comes from its clean IPA (PIXIE_SOURCE_IPA) or from jailbreak/plans/spotify-<version>.
 ifeq ($(PIXIE_JAILBREAK),1)
-PIXIE_PLAN_DIR ?= $(THEOS_PROJECT_DIR)/NativeDownloads/jailbreak/plans/spotify-9.2.0
+ifeq ($(strip $(PIXIE_TARGET)),)
+$(error PIXIE_JAILBREAK=1 needs PIXIE_TARGET=targets/spotify-<version>.json)
+endif
+export PIXIE_TARGET
+PIXIE_PLAN_DIR ?= $(THEOS_PROJECT_DIR)/NativeDownloads/jailbreak/plans/$(basename $(notdir $(PIXIE_TARGET)))
 PIXIE_BUILD_DIR := $(THEOS_PROJECT_DIR)/.theos/pixie-$(THEOS_PACKAGE_SCHEME)
 PIXIE_DYLIB := $(PIXIE_BUILD_DIR)/SpotifyAudioProbe.dylib
 EeveeSpotify_LDFLAGS += -Wl,-needed_library,$(PIXIE_DYLIB)
