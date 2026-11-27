@@ -25,6 +25,8 @@ struct LocalPlaylistDownloadGroup: HookGroup {}
 
 enum LocalPlaylistDownload {
     static let launchEnabled = UserDefaults.localPlaylistDownloadEnabled
+    // The hooks below are activated only while Eevee patches the account.
+    static let hidesButton = UserDefaults.patchType.isPatching && !launchEnabled
     private static let actionViewClass = NSClassFromString(
         "_TtC35ListUXPlatform_FreeTierPlaylistImplP33_0FBF7F603415652909A2EEC13496CA7D10ActionView"
     )
@@ -34,7 +36,9 @@ enum LocalPlaylistDownload {
         var current: UIView? = button
         var hasDownloadText = false
         while let view = current {
+            // The label and hint are matched in English only; the granular button's identifier is the same in every language.
             hasDownloadText = hasDownloadText ||
+                view.accessibilityIdentifier?.hasPrefix("DownloadButton.Granular.") == true ||
                 view.accessibilityLabel?.caseInsensitiveCompare("Download") == .orderedSame ||
                 view.accessibilityHint?.range(of: "tap to download and make available offline", options: .caseInsensitive) != nil
             if view.isKind(of: actionViewClass) { return hasDownloadText }
@@ -70,7 +74,8 @@ class LocalPlaylistDownloadActionHook: ClassHook<UIButton> {
         }
 
         guard LocalPlaylistDownload.launchEnabled else { return }
-        if LatestPremiumPatchingGroup.isActive || IOS14And15PremiumPatchingGroup.isActive {
+        // With Pixie loaded the playlist downloads natively, so the server-side popup is not shown.
+        if pixieCompanionPresent || LatestPremiumPatchingGroup.isActive || IOS14And15PremiumPatchingGroup.isActive {
             orig.sendAction(action, to: recipient, forEvent: event)
             return
         }
@@ -124,6 +129,14 @@ class ContentOffliningUIHelperImplementationHook: ClassHook<NSObject> {
         pageIdentifier: NSString,
         pageURI: NSURL
     ) {
+        // With Pixie loaded downloads work natively, so Spotify's own handler runs.
+        guard !pixieCompanionPresent else {
+            orig.downloadToggledWithCurrentAvailability(
+                availability, addAction: addAction, removeAction: removeAction,
+                pageIdentifier: pageIdentifier, pageURI: pageURI
+            )
+            return
+        }
         let isPlaylist = Dynamic.convert(pageURI, to: SPTURL.self)
             .isPlaylistURL()
         
@@ -164,6 +177,14 @@ class ContentOffliningUIHelperImplementationModernHook: ClassHook<NSObject> {
         pageURI: NSURL,
         interactionID: NSString
     ) {
+        // With Pixie loaded downloads work natively, so Spotify's own handler runs.
+        guard !pixieCompanionPresent else {
+            orig.downloadToggledWithCurrentAvailability(
+                availability, addAction: addAction, removeAction: removeAction,
+                pageIdentifier: pageIdentifier, pageURI: pageURI, interactionID: interactionID
+            )
+            return
+        }
         let isPlaylist = Dynamic.convert(pageURI, to: SPTURL.self)
             .isPlaylistURL()
         

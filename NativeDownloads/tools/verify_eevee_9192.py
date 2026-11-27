@@ -12,6 +12,7 @@ import patch_key_request_mode as mode
 import patch_native_restrictions as quota
 import patch_native_trace as trace
 import patch_export as export
+import patch_lyrics_offline_cache as lyrics_cache
 from export_release_materials import notices
 from pixie_target import PROFILE
 from signing_metadata import embedded_entitlements
@@ -38,10 +39,11 @@ def main():
         info = plistlib.loads(source.read(APP + 'Info.plist'))
         require(info['CFBundleShortVersionString'] == PROFILE['spotify_version'], 'Wrong Spotify version')
         require(quota.layout(original)[3] == quota.UUID, 'Wrong Spotify UUID')
-        # The manager destructor publishes this table. Its unchanged slot 65
-        # points to the relocated six-argument restriction setter.
+        # The manager destructor publishes this table. One of its slots (65 in 9.2.0,
+        # 69 in 9.2.2) points to the relocated six-argument restriction setter.
         manager_table = int(PROFILE['native']['manager_vtable'], 16)
-        pointer = struct.unpack_from('<Q', original, manager_table - quota.PREFERRED + 65 * 8)[0]
+        setter_slot = int(PROFILE['native'].get('manager_setter_slot', 65))
+        pointer = struct.unpack_from('<Q', original, manager_table - quota.PREFERRED + setter_slot * 8)[0]
         require(pointer & 0xfffffffff == quota.SETTER - quota.PREFERRED, 'Manager vtable changed')
         render_offset = int(PROFILE['native']['render_callback'], 16) - quota.PREFERRED
         require(original[render_offset:render_offset+16] == bytes.fromhex('a3050035f85fbca9f65701a9f44f02a9'),
@@ -58,6 +60,7 @@ def main():
         prepared, _ = mode.patch(prepared, runtime_selectable=False)
         patched, trace_report = trace.patch(prepared)
         patched, export_report = export.patch(patched)
+        patched, lyrics_cache_report = lyrics_cache.patch(patched, PROFILE["spotify_version"])
         # Code outside the explicit observation entries/padding spans (the three diagnostic
         # boundaries and the Pixie 1.4 export boundaries) must remain byte-for-byte unchanged.
         spans = []
@@ -69,6 +72,10 @@ def main():
             _, address, cave, _, _ = point
             spans.extend([(address-quota.PREFERRED, address-quota.PREFERRED+4),
                           (cave-quota.PREFERRED, cave-quota.PREFERRED+len(export.trampoline(point)))])
+        if lyrics_cache_report["applied"]:
+            for field in ("file_offset", "viewer_flag_file_offset"):
+                offset = lyrics_cache_report[field]
+                spans.append((offset, offset + 4))
         position = 0
         for start, end in sorted(spans):
             require(prepared[position:start] == patched[position:start], 'Unexpected diagnostic change')
@@ -93,9 +100,11 @@ def main():
             raise ValueError('Repeated trace patch was accepted')
         report = {'spotify_version': PROFILE['spotify_version'], 'pixie_version': PROFILE['pixie_version'],
                   'spotify_uuid': quota.UUID.hex(), 'manager_vtable': hex(manager_table),
-                  'manager_setter_slot': 65, 'restriction_fields_unchanged': ['0x2b8', '0x2c0', '0x2c8', '0x2d0', '0x2d8'],
+                  'manager_setter_slot': setter_slot,
+                  'restriction_fields_unchanged': [hex(0x2b0 + int(PROFILE['native'].get('manager_field_shift', 0)) + 8 * i) for i in range(5)],
                   'hook_target_names_present': required, 'rejected_invalid_patch_cases': rejected,
                   'quota': quota_report, 'diagnostic_boundaries': trace_report, 'export_boundaries': export_report,
+                  'offline_lyrics_cache': lyrics_cache_report,
                   'phone_runtime_tested': False}
         if args.output:
             with ZipFile(args.output) as result:

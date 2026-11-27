@@ -83,6 +83,7 @@ enum SpotifyResponsePatcher {
         return (shouldReplaceLyrics && url.isLyrics)
             || (shouldPatchPremium && (
                 (url.isNebulaAttributes && NebulaAttributes.isEnabled) ||
+                (url.isRemoteConfiguration && NebulaAttributes.isEnabled) ||
                 url.isBootstrap || url.isCustomize ||
                 url.isPremiumPlanRow || url.isPremiumBadge || url.isPlanOverview ||
                 isDAC
@@ -127,6 +128,7 @@ enum SpotifyResponsePatcher {
         case dacEmpty    = "dac"
         case casitaStrip = "casitaStrip"
         case nebulaAttributes = "nebulaAttributes"
+        case remoteConfiguration = "remoteConfiguration"
     }
 
     struct PatchResult {
@@ -142,6 +144,11 @@ enum SpotifyResponsePatcher {
         if url.isNebulaAttributes {
             guard let rewritten = rewriteAccountAttributesData(buffer) else { return nil }
             return PatchResult(data: rewritten, tag: .nebulaAttributes)
+        }
+        // 9.2's remote configuration, which the bootstrap and customize rewrites no longer reach.
+        if url.isRemoteConfiguration {
+            guard let rewritten = rewriteRemoteConfigurationData(buffer) else { return nil }
+            return PatchResult(data: rewritten, tag: .remoteConfiguration)
         }
         if url.isPremiumPlanRow {
             return PatchResult(
@@ -177,7 +184,12 @@ enum SpotifyResponsePatcher {
             return PatchResult(data: Data(), tag: .dacEmpty)
         }
         if BrowsitaSectionStripper.shouldHandle(url) {
-            if let stripped = BrowsitaSectionStripper.strip(buffer, url: url) {
+            let stripped = BrowsitaSectionStripper.strip(buffer, url: url)
+            // Songs with saved provider lyrics get Spotify's own lyrics card under the player.
+            if let withCard = NativeLyricsCard.insert(into: stripped ?? buffer, url: url) {
+                return PatchResult(data: withCard, tag: .casitaStrip)
+            }
+            if let stripped {
                 return PatchResult(data: stripped, tag: .casitaStrip)
             }
             // Ad survived in a feed we parse but found no marker in — visible

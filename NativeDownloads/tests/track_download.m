@@ -19,7 +19,6 @@ void SAPReadNativeTrackState(NSString *uri) {}
 void SAPRequestNativeAlbumDownload(NSString *uri, void (^completion)(BOOL, NSString *)) {
     if (completion) completion(YES, @"test album request");
 }
-NSUInteger SAPObservedAudioKeyCount(void) { return 0; }
 void SAPJournalVerifyTrack(NSString *uri,void (^completion)(NSDictionary *)) {if(completion)completion(nil);}
 NSDictionary *SAPNativeOfflineReport(void) { return @{@"test_stub":@YES}; }
 // Журнал здесь подменён: проверяем, что транспортный хук отдаёт ему каждый вызов
@@ -674,3 +673,8 @@ int main(void) { @autoreleasepool {
     puts("PASS: incompatible stream signatures are never called, return one exact verification error, and schedule no infinite retry");
     puts("PASS: native preparation failure/cancellation; native transport/descriptor routing; exact one-track wire request; journal observation of every Offline call; actual rejection codes vs no response; independent item-state completion; transient/incorrect/nil responses; cached track; cancellation; stale callback; no idle polling");
 } }
+
+// This transport fixture runs without the Eevee lyrics sidecar.
+void SAPRequestOfflineLyrics(NSString *uri, NSArray *tracks) {}
+
+void SAPRemoveOfflineLyrics(NSString *uri, NSArray *tracks) {}
