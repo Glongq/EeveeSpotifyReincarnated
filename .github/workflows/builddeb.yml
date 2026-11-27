@@ -17,14 +17,23 @@ on:
         default: "false"
         type: choice
         options: ["false", "true"]
+      pixie:
+        description: "Bundle Pixie for this Spotify version, e.g. 9.2.2 (optional — plain .debs if empty)"
+        required: false
+        default: ""
 
 env:
   SWIFTPROTOBUF_VERSION: "1.29.0"
+  PIXIE_SPOTIFY: ${{ inputs.pixie }}
+  # Draft release holding the clean decrypted com.spotify.client-<version>-*.ipa for Pixie builds.
+  PIXIE_IPA_RELEASE: ${{ vars.PIXIE_IPA_RELEASE || 'ci-lyrics-input-202611201455' }}
 
 jobs:
   build-debs:
     name: Build ${{ matrix.label }} .deb
     runs-on: macos-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +74,28 @@ jobs:
 
       - name: Build EeveeSwiftProtobuf.framework
         run: make build-eeveeswiftprotobuf
+
+      # The clean IPA is read only to generate the guarded patch plan; it is not uploaded.
+      - name: Prepare Pixie for Spotify ${{ inputs.pixie }}
+        if: ${{ inputs.pixie != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET="targets/spotify-${PIXIE_SPOTIFY}.json"
+          [ -f "NativeDownloads/$TARGET" ] || { echo "::error::No Pixie target NativeDownloads/$TARGET"; ls NativeDownloads/targets; exit 1; }
+          mkdir -p "$RUNNER_TEMP/ipa"
+          gh release download "$PIXIE_IPA_RELEASE" --repo "$GITHUB_REPOSITORY" \
+            --pattern "com.spotify.client-${PIXIE_SPOTIFY}-*.ipa" --dir "$RUNNER_TEMP/ipa"
+          [ "$(ls "$RUNNER_TEMP"/ipa/*.ipa | wc -l)" -eq 1 ] || { echo "::error::Expected one clean Spotify $PIXIE_SPOTIFY IPA"; exit 1; }
+          {
+            echo "PIXIE_JAILBREAK=1"
+            echo "PIXIE_TARGET=$TARGET"
+            echo "PIXIE_SOURCE_IPA=$(ls "$RUNNER_TEMP"/ipa/*.ipa)"
+            echo "PACKAGE_VERSION=$(sed -n 's/^Version: *//p' control)+pixie.${PIXIE_SPOTIFY}"
+          } >> "$GITHUB_ENV"
+          PIXIE_TARGET="$TARGET" python3 NativeDownloads/tools/test.py --no-sanitize \
+            --fixture jailbreak_identity --fixture jailbreak_patches --fixture jailbreak_import_memory \
+            --build-dir "$RUNNER_TEMP/pixie-runtime-tests"
 
       - name: Test ad and Premium banner filtering
         run: |
@@ -153,6 +184,14 @@ jobs:
           if [ "${{ matrix.scheme }}" = "roothide" ]; then
             [ "$(dpkg-deb -f "$DEB_PATH" Architecture)" = "iphoneos-arm64e" ]
           fi
+
+      - name: Validate Pixie companion and shader
+        if: ${{ inputs.pixie != '' }}
+        run: |
+          DEB_PATH="$(find Outputs/DEBS -name '*.deb' -type f | head -n 1)"
+          python3 NativeDownloads/tools/validate_jailbreak_deb.py "$DEB_PATH" \
+            --scheme "${{ matrix.scheme }}" --build-dir ".theos/pixie-${{ matrix.scheme }}"
+          python3 -c "import runpy, sys, pathlib; runpy.run_path('Scripts/build-pixie-debs-local.py')['validate_shader'](pathlib.Path(sys.argv[1]))" "$DEB_PATH"
 
       - name: Upload ${{ matrix.label }} artifact
         uses: actions/upload-artifact@v4

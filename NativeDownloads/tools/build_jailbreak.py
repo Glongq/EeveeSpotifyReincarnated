@@ -24,7 +24,7 @@ def stage_eevee(path, stage_root):
 def plan_inputs():
     names = ['build_jailbreak.py', 'jailbreak_plan.py', 'patch_imports.py',
              'patch_native_restrictions.py', 'patch_key_request_mode.py',
-             'patch_native_trace.py', 'patch_export.py', 'pixie_target.py']
+             'patch_native_trace.py', 'patch_export.py', 'patch_lyrics_offline_cache.py', 'pixie_target.py']
     paths = [ROOT/'tools'/name for name in names] + [PROFILE_PATH]
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 

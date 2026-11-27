@@ -71,7 +71,6 @@ void SAPTraceCaptureRuntimeManifest(const char *reason) {
         if([base isEqual:@"Spotify"])image[@"critical_loaded_code_samples"]=criticalSamples((uintptr_t)h,uuid);
         if(info[@"CFBundleIdentifier"])image[@"bundle_identifier"]=info[@"CFBundleIdentifier"];
         if(info[@"CFBundleShortVersionString"])image[@"declared_version"]=info[@"CFBundleShortVersionString"];
-        if(info[@"CFBundleVersion"])image[@"declared_build"]=info[@"CFBundleVersion"];
         [images addObject:image];
     }
     SAP_TRACE("runtime","manifest",0,@{@"reason":reason?@(reason):@"unknown",@"images":images,@"hooks":SAPTraceHookManifest(),@"key_mode":SAPKeyRequestModeReport(),

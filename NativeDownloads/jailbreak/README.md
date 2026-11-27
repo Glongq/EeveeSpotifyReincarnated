@@ -6,24 +6,20 @@ required.
 
 ## GitHub Actions
 
-`.github/workflows/pixie-debs.yml` runs on push to a branch whose name contains
-`debs`, or by hand. It is upstream's `builddeb.yml` (Xcode 26.3, theos/theos for
-rootless, roothide/theos for RootHide, EeveeSwiftProtobuf 1.29.0, the same tests and
-package checks, `make package FINALPACKAGE=1`) with `PIXIE_JAILBREAK=1` and these
-additions:
+Upstream's `.github/workflows/builddeb.yml`, run by hand, unchanged when its `pixie`
+field is empty. With `pixie` set to a Spotify version such as `9.2.2`, it also:
 
-- One build per target in `NativeDownloads/targets` whose clean decrypted IPA,
-  `com.spotify.client-<version>-*.ipa`, is attached to the draft release named by the
-  repository variable `PIXIE_IPA_RELEASE`. Versions without one are skipped with a
-  warning.
-- The IPA is read on the runner only to generate the guarded patch plan with the
-  same IPA patchers; it is never uploaded.
-- The guarded runtime helpers are tested, and each package is checked by
+- requires `NativeDownloads/targets/spotify-<version>.json` and the clean decrypted IPA
+  `com.spotify.client-<version>-*.ipa` in the draft release named by the repository
+  variable `PIXIE_IPA_RELEASE`;
+- reads that IPA on the runner only to generate the guarded patch plan, with the same
+  patchers as the IPA build; it is never uploaded;
+- builds both packages with `PIXIE_JAILBREAK=1` as version `<control Version>+pixie.<version>`;
+- tests the guarded runtime helpers and checks each package with
   `tools/validate_jailbreak_deb.py` and for the compiled karaoke shader.
-- Artifacts: the DEB, its SHA-256 and the companion's `build.json`. No release is created.
 
 A new Spotify version needs no workflow change: once its target profile exists,
-attach its clean IPA to the draft release.
+attach its clean IPA to the draft release and enter the version.
 
 ## Makefile
 

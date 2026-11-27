@@ -12,6 +12,7 @@ from patch_native_restrictions import layout, patch as patch_limits
 from patch_key_request_mode import patch as patch_key
 from patch_native_trace import patch as patch_trace
 from patch_export import patch as patch_export
+from patch_lyrics_offline_cache import patch as patch_lyrics_offline_cache
 
 
 def import_slots(data):
@@ -78,6 +79,7 @@ def make_plan(original):
     patched, _ = patch_key(patched, runtime_selectable=False)
     patched, _ = patch_trace(patched)
     patched, _ = patch_export(patched)
+    patched, _ = patch_lyrics_offline_cache(patched, PROFILE['spotify_version'])
     text = next(s for s in segments if s[0] == b'__TEXT')
     _, vm, _, fileoff, filesize, protection = text
     if protection & 5 != 5 or fileoff or vm != int(PROFILE['preferred_address'], 16):
